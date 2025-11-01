@@ -4,15 +4,24 @@ import {
   type Conversation,
   type InsertConversation,
   type Message,
-  type InsertMessage
+  type InsertMessage,
+  type User,
+  type UpsertUser
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
+  // User operations (IMPORTANT - mandatory for Replit Auth)
+  getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
+  updateUserStripeInfo(userId: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User | undefined>;
+  updateUserPlan(userId: string, plan: string, subscriptionStatus: string): Promise<User | undefined>;
+  
   getProperty(id: string): Promise<Property | undefined>;
   getPropertyByAccessKey(accessKey: string): Promise<Property | undefined>;
   getAllProperties(): Promise<Property[]>;
-  createProperty(property: InsertProperty): Promise<Property>;
+  getPropertiesByUser(userId: string): Promise<Property[]>;
+  createProperty(property: InsertProperty, userId: string): Promise<Property>;
   updateProperty(id: string, property: Partial<InsertProperty>): Promise<Property | undefined>;
   deleteProperty(id: string): Promise<boolean>;
 
@@ -26,11 +35,13 @@ export interface IStorage {
 }
 
 export class MemStorage implements IStorage {
+  private users: Map<string, User>;
   private properties: Map<string, Property>;
   private conversations: Map<string, Conversation>;
   private messages: Map<string, Message>;
 
   constructor() {
+    this.users = new Map();
     this.properties = new Map();
     this.conversations = new Map();
     this.messages = new Map();
@@ -39,6 +50,7 @@ export class MemStorage implements IStorage {
     const defaultAccessKey = "demo-paris-01";
     const defaultProperty: Property = {
       id: defaultPropertyId,
+      userId: null,
       accessKey: defaultAccessKey,
       name: "Appartement Lumineux à Paris",
       description: "Bel appartement de 2 chambres au cœur de Paris, parfait pour 4 personnes",
@@ -77,6 +89,62 @@ export class MemStorage implements IStorage {
     this.properties.set(defaultPropertyId, defaultProperty);
   }
 
+  // User operations (IMPORTANT - mandatory for Replit Auth)
+  async getUser(id: string): Promise<User | undefined> {
+    return this.users.get(id);
+  }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const existing = this.users.get(userData.id);
+    const now = new Date();
+    
+    const user: User = {
+      id: userData.id,
+      email: userData.email ?? null,
+      firstName: userData.firstName ?? null,
+      lastName: userData.lastName ?? null,
+      profileImageUrl: userData.profileImageUrl ?? null,
+      stripeCustomerId: existing?.stripeCustomerId ?? null,
+      stripeSubscriptionId: existing?.stripeSubscriptionId ?? null,
+      plan: existing?.plan ?? "free",
+      trialEndsAt: existing?.trialEndsAt ?? null,
+      subscriptionStatus: existing?.subscriptionStatus ?? null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    
+    this.users.set(userData.id, user);
+    return user;
+  }
+
+  async updateUserStripeInfo(userId: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    
+    const updated: User = {
+      ...user,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      updatedAt: new Date(),
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  async updateUserPlan(userId: string, plan: string, subscriptionStatus: string): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    
+    const updated: User = {
+      ...user,
+      plan,
+      subscriptionStatus,
+      updatedAt: new Date(),
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
   async getProperty(id: string): Promise<Property | undefined> {
     return this.properties.get(id);
   }
@@ -91,11 +159,18 @@ export class MemStorage implements IStorage {
     );
   }
 
-  async createProperty(insertProperty: InsertProperty): Promise<Property> {
+  async getPropertiesByUser(userId: string): Promise<Property[]> {
+    return Array.from(this.properties.values())
+      .filter(p => p.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async createProperty(insertProperty: InsertProperty, userId: string): Promise<Property> {
     const id = randomUUID();
     const accessKey = Math.random().toString(36).substring(2, 14);
     const property: Property = { 
       id,
+      userId,
       accessKey,
       name: insertProperty.name,
       description: insertProperty.description,

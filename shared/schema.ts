@@ -1,10 +1,43 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Session storage table for Replit Auth
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table for Replit Auth + Stripe
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  
+  // Stripe fields
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  plan: varchar("plan").notNull().default("free"), // free, pro, business
+  trialEndsAt: timestamp("trial_ends_at"),
+  subscriptionStatus: varchar("subscription_status"), // active, trialing, canceled, past_due
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const properties = pgTable("properties", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
   accessKey: varchar("access_key").notNull().unique().default(sql`substring(md5(random()::text), 1, 12)`),
   name: text("name").notNull(),
   description: text("description").notNull(),
@@ -78,8 +111,19 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const upsertUserSchema = createInsertSchema(users).omit({
+  createdAt: true,
+  updatedAt: true,
+  plan: true,
+  trialEndsAt: true,
+  subscriptionStatus: true,
+  stripeCustomerId: true,
+  stripeSubscriptionId: true,
+});
+
 export const insertPropertySchema = createInsertSchema(properties).omit({
   id: true,
+  userId: true,
   accessKey: true,
   createdAt: true,
 });
@@ -103,3 +147,6 @@ export type Conversation = typeof conversations.$inferSelect;
 
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
+
+export type UpsertUser = z.infer<typeof upsertUserSchema>;
+export type User = typeof users.$inferSelect;
