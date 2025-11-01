@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Check } from "lucide-react";
+import { Link } from "wouter";
 
 export default function CTASection() {
   const benefits = [
@@ -29,14 +30,16 @@ export default function CTASection() {
             ))}
           </div>
           
-          <Button 
-            size="lg" 
-            className="rounded-full px-8 text-base font-semibold"
-            data-testid="button-cta-start"
-          >
-            Commencer Gratuitement
-            <ArrowRight className="w-5 h-5 ml-2" />
-          </Button>
+          <Link href="/chat">
+            <Button 
+              size="lg" 
+              className="rounded-full px-8 text-base font-semibold"
+              data-testid="button-cta-start"
+            >
+              Commencer Gratuitement
+              <ArrowRight className="w-5 h-5 ml-2" />
+            </Button>
+          </Link>
           
           <p className="text-sm text-muted-foreground mt-6">
             Plus de 500 hôtes nous font confiance

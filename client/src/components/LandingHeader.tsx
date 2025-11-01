@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { MessageSquare } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import { Link } from "wouter";
 
 export default function LandingHeader() {
   return (
@@ -39,20 +40,24 @@ export default function LandingHeader() {
         
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <Button 
-            variant="ghost" 
-            size="sm"
-            data-testid="button-login"
-          >
-            Connexion
-          </Button>
-          <Button 
-            size="sm" 
-            className="rounded-full"
-            data-testid="button-signup"
-          >
-            Inscription
-          </Button>
+          <Link href="/chat">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              data-testid="button-login"
+            >
+              Essayer
+            </Button>
+          </Link>
+          <Link href="/admin">
+            <Button 
+              size="sm" 
+              className="rounded-full"
+              data-testid="button-signup"
+            >
+              Configuration
+            </Button>
+          </Link>
         </div>
       </div>
     </header>

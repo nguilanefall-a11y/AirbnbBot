@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Sparkles } from "lucide-react";
 import heroImage from "@assets/generated_images/Airbnb_hero_background_image_5f8c9168.png";
+import { Link } from "wouter";
 
 export default function LandingHero() {
   return (
@@ -30,22 +31,26 @@ export default function LandingHero() {
           </p>
           
           <div className="flex flex-wrap gap-4">
-            <Button 
-              size="lg" 
-              className="rounded-full px-8 text-base font-semibold"
-              data-testid="button-start-free"
-            >
-              <MessageSquare className="w-5 h-5 mr-2" />
-              Commencer Gratuitement
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline" 
-              className="rounded-full px-8 text-base font-semibold bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20"
-              data-testid="button-demo"
-            >
-              Voir la Démo
-            </Button>
+            <Link href="/chat">
+              <Button 
+                size="lg" 
+                className="rounded-full px-8 text-base font-semibold"
+                data-testid="button-start-free"
+              >
+                <MessageSquare className="w-5 h-5 mr-2" />
+                Commencer Gratuitement
+              </Button>
+            </Link>
+            <Link href="/admin">
+              <Button 
+                size="lg" 
+                variant="outline" 
+                className="rounded-full px-8 text-base font-semibold bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20"
+                data-testid="button-demo"
+              >
+                Configuration
+              </Button>
+            </Link>
           </div>
           
           <div className="mt-8 flex items-center gap-6 text-white/80 text-sm">
