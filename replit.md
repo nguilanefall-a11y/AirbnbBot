@@ -9,7 +9,21 @@ This is an AI-powered chatbot application designed for Airbnb property hosts to 
 
 Hosts configure detailed property information (localisation, check-in procedures, WiFi, amenities, rules, etc.) and generate unique access links for their guests. Guests access their specific property via these links and interact with an AI assistant powered by OpenAI's GPT-4 model that provides contextual answers based on the host's configuration.
 
-The application features a landing page showcasing the product, separate host and guest spaces, real-time WebSocket chat, and auto-save functionality.
+The application features a landing page showcasing the product, separate host and guest spaces, real-time WebSocket chat, auto-save functionality, and **subscription-based monetization with Stripe**.
+
+## Subscription System
+
+**Pricing Tiers:**
+- **Gratuit (Free)**: 1 property, unlimited conversations, basic AI assistant, email support
+- **Pro (€39/mois)**: 5 properties, unlimited conversations, advanced AI, priority support, detailed analytics, 7-day free trial
+- **Business (€99/mois)**: Unlimited properties, premium AI, VIP 24/7 support, advanced analytics, API integration, 7-day free trial
+
+**Payment Features:**
+- 7-day free trial for all paid plans (Pro & Business)
+- All Stripe payment methods supported (card, SEPA, Apple Pay, Google Pay, etc.)
+- No credit card required for free plan
+- Cancel anytime functionality
+- Subscription managed via Stripe webhook integration
 
 ## User Preferences
 
@@ -34,13 +48,16 @@ Preferred communication style: Simple, everyday language.
 - Design guidelines emphasize warmth, trust, and modern messaging interfaces
 
 **Page Structure:**
-- **Landing page** (`/`) - Hero, features, how-it-works, testimonials, and CTA sections
+- **Landing page** (`/`) - Hero, features, how-it-works, testimonials, and CTA sections with pricing link
+- **Pricing page** (`/pricing`) - Three-tier pricing display with plan comparison and subscription CTAs
+- **Subscribe page** (`/subscribe`) - Stripe checkout with Payment Element supporting all payment methods
 - **Host Space** (`/host`) - Sophisticated admin interface with:
   - Property list sidebar
   - Guest link generator with copy functionality
   - Tabbed configuration (5 tabs: Général, Check-in/out, Équipements, Règles, Infos Utiles)
   - Auto-save on field blur
   - Real-time toast notifications
+  - Authentication required (Replit Auth)
 - **Guest Space** (`/guest/:accessKey`) - Simplified chat interface with:
   - Access via unique property link only
   - Property-specific branding
@@ -66,13 +83,15 @@ Preferred communication style: Simple, everyday language.
 
 **API Design:**
 - RESTful endpoints:
-  - Properties: GET `/api/properties`, GET `/api/properties/:id`, GET `/api/properties/by-key/:accessKey`, PATCH `/api/properties/:id`
+  - Auth: GET `/api/auth/user` (protected, returns current user with subscription info)
+  - Properties: GET `/api/properties`, GET `/api/properties/:id`, GET `/api/properties/by-key/:accessKey`, POST `/api/properties` (protected), PATCH `/api/properties/:id`
   - Conversations: GET `/api/conversations/property/:propertyId`, POST `/api/conversations`
   - Messages: GET `/api/messages/:conversationId`, POST `/api/messages`
+  - Subscriptions: POST `/api/create-subscription` (protected), GET `/api/subscription-status` (protected), POST `/api/cancel-subscription` (protected)
 - WebSocket endpoint (`/ws`) for real-time chat message delivery
 - Request/response logging middleware for debugging
 - JSON-based communication with validation via Zod schemas
-- Security: accessKey-based property access for guests
+- Security: accessKey-based property access for guests, Replit Auth session-based protection for host routes
 
 **Server Architecture:**
 - Modular route registration pattern
@@ -84,8 +103,12 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 
 **Database Schema (PostgreSQL):**
+- `users` table: User accounts with authentication and subscription data:
+  - **Identity**: id (text, primary key from Replit Auth), email, firstName, lastName, profileImageUrl
+  - **Subscription**: stripeCustomerId, stripeSubscriptionId, plan (free/pro/business), subscriptionStatus, trialEndsAt
+  - **Timestamps**: createdAt, updatedAt
 - `properties` table: Comprehensive property information organized by category:
-  - **System**: id (UUID), accessKey (unique 12-char), createdAt
+  - **System**: id (UUID), userId (foreign key to users), accessKey (unique 12-char), createdAt
   - **General**: name, description
   - **Location**: address, floor, doorCode, accessInstructions
   - **Check-in/out**: checkInTime, checkOutTime, checkInProcedure, checkOutProcedure, keyLocation
