@@ -4,8 +4,8 @@ import { Link } from "wouter";
 
 export default function CTASection() {
   const benefits = [
-    "Essai gratuit de 14 jours",
-    "Aucune carte de crédit requise",
+    "7 jours d'essai gratuit",
+    "Aucune carte de crédit pour le plan gratuit",
     "Configuration en 5 minutes",
     "Annulation à tout moment"
   ];
@@ -30,16 +30,15 @@ export default function CTASection() {
             ))}
           </div>
           
-          <Link href="/chat">
-            <Button 
-              size="lg" 
-              className="rounded-full px-8 text-base font-semibold"
-              data-testid="button-cta-start"
-            >
-              Commencer Gratuitement
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Link>
+          <Button 
+            size="lg" 
+            className="rounded-full px-8 text-base font-semibold"
+            data-testid="button-cta-start"
+            onClick={() => window.location.href = '/pricing'}
+          >
+            Voir les tarifs
+            <ArrowRight className="w-5 h-5 ml-2" />
+          </Button>
           
           <p className="text-sm text-muted-foreground mt-6">
             Plus de 500 hôtes nous font confiance

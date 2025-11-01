@@ -29,6 +29,13 @@ export default function LandingHeader() {
           >
             Comment ça marche
           </a>
+          <Link 
+            href="/pricing"
+            className="text-sm font-medium hover-elevate px-3 py-2 rounded-md transition-colors"
+            data-testid="link-pricing"
+          >
+            Tarifs
+          </Link>
           <a 
             href="#testimonials" 
             className="text-sm font-medium hover-elevate px-3 py-2 rounded-md transition-colors"
@@ -40,24 +47,23 @@ export default function LandingHeader() {
         
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <Link href="/chat">
+          <a href="/api/login">
             <Button 
               variant="ghost" 
               size="sm"
               data-testid="button-login"
             >
-              Essayer
+              Connexion
             </Button>
-          </Link>
-          <Link href="/host">
-            <Button 
-              size="sm" 
-              className="rounded-full"
-              data-testid="button-signup"
-            >
-              Espace Hôte
-            </Button>
-          </Link>
+          </a>
+          <Button 
+            size="sm" 
+            className="rounded-full"
+            data-testid="button-signup"
+            onClick={() => window.location.href = '/pricing'}
+          >
+            Commencer
+          </Button>
         </div>
       </div>
     </header>
