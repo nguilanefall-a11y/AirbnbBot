@@ -1,11 +1,34 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import Stripe from "stripe";
 import { storage } from "./storage";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertPropertySchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
 import { generateChatResponse } from "./openai";
 
+// Initialize Stripe
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
+}
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware (from Replit Auth blueprint)
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
   // Properties routes
   app.get("/api/properties", async (_req, res) => {
     try {
@@ -40,10 +63,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/properties", async (req, res) => {
+  app.post("/api/properties", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
       const validatedData = insertPropertySchema.parse(req.body);
-      const property = await storage.createProperty(validatedData);
+      const property = await storage.createProperty(validatedData, userId);
       res.status(201).json(property);
     } catch (error) {
       res.status(400).json({ error: "Invalid property data" });
@@ -91,6 +115,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(conversation);
     } catch (error) {
       res.status(400).json({ error: "Invalid conversation data" });
+    }
+  });
+
+  // Stripe subscription routes
+  // Create subscription with 7-day trial
+  app.post('/api/create-subscription', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { plan } = req.body; // 'pro' or 'business'
+      
+      let user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // If user already has a subscription, retrieve it
+      if (user.stripeSubscriptionId) {
+        const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+        return res.json({
+          subscriptionId: subscription.id,
+          clientSecret: (subscription.latest_invoice as any)?.payment_intent?.client_secret,
+        });
+      }
+
+      // Create or retrieve Stripe customer
+      let stripeCustomerId = user.stripeCustomerId;
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: user.email ?? undefined,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+          metadata: { userId },
+        });
+        stripeCustomerId = customer.id;
+        await storage.updateUserStripeInfo(userId, stripeCustomerId, '');
+      }
+
+      // Determine price based on plan
+      const priceId = plan === 'business' 
+        ? process.env.STRIPE_PRICE_BUSINESS_ID 
+        : process.env.STRIPE_PRICE_PRO_ID;
+
+      if (!priceId) {
+        return res.status(400).json({ error: "Plan price ID not configured" });
+      }
+
+      // Create subscription with 7-day trial
+      const subscription = await stripe.subscriptions.create({
+        customer: stripeCustomerId,
+        items: [{ price: priceId }],
+        payment_behavior: 'default_incomplete',
+        payment_settings: { save_default_payment_method: 'on_subscription' },
+        trial_period_days: 7,
+        expand: ['latest_invoice.payment_intent'],
+      });
+
+      // Update user with subscription info and trial
+      await storage.updateUserStripeInfo(userId, stripeCustomerId, subscription.id);
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + 7);
+      await storage.updateUserPlan(userId, plan, 'trialing');
+
+      res.json({
+        subscriptionId: subscription.id,
+        clientSecret: (subscription.latest_invoice as any)?.payment_intent?.client_secret,
+        trialEnd,
+      });
+    } catch (error: any) {
+      console.error("Error creating subscription:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get user's subscription status
+  app.get('/api/subscription-status', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (!user.stripeSubscriptionId) {
+        return res.json({
+          plan: user.plan,
+          status: null,
+          trialEndsAt: user.trialEndsAt,
+        });
+      }
+
+      const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+      
+      res.json({
+        plan: user.plan,
+        status: subscription.status,
+        trialEndsAt: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      });
+    } catch (error: any) {
+      console.error("Error fetching subscription:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Cancel subscription
+  app.post('/api/cancel-subscription', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.stripeSubscriptionId) {
+        return res.status(400).json({ error: "No active subscription" });
+      }
+
+      const subscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+
+      res.json({ 
+        message: "Subscription will be canceled at period end",
+        cancelAt: new Date(subscription.current_period_end * 1000),
+      });
+    } catch (error: any) {
+      console.error("Error canceling subscription:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

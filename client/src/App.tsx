@@ -7,6 +7,8 @@ import Landing from "@/pages/Landing";
 import Chat from "@/pages/Chat";
 import AdminHost from "@/pages/AdminHost";
 import Guest from "@/pages/Guest";
+import Pricing from "@/pages/Pricing";
+import Subscribe from "@/pages/Subscribe";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -16,6 +18,8 @@ function Router() {
       <Route path="/chat" component={Chat} />
       <Route path="/host" component={AdminHost} />
       <Route path="/guest/:accessKey" component={Guest} />
+      <Route path="/pricing" component={Pricing} />
+      <Route path="/subscribe" component={Subscribe} />
       <Route component={NotFound} />
     </Switch>
   );

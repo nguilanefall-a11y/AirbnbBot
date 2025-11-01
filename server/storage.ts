@@ -95,11 +95,12 @@ export class MemStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const existing = this.users.get(userData.id);
+    const existing = this.users.get(userData.id ?? "");
     const now = new Date();
+    const userId = userData.id ?? "";
     
     const user: User = {
-      id: userData.id,
+      id: userId,
       email: userData.email ?? null,
       firstName: userData.firstName ?? null,
       lastName: userData.lastName ?? null,
@@ -113,7 +114,7 @@ export class MemStorage implements IStorage {
       updatedAt: now,
     };
     
-    this.users.set(userData.id, user);
+    this.users.set(userId, user);
     return user;
   }
 
