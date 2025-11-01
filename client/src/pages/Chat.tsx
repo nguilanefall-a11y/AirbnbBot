@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useToast } from "@/hooks/use-toast";
+import { chatWebSocket } from "@/lib/websocket";
 
 export default function Chat() {
   const { toast } = useToast();
@@ -23,6 +24,7 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [newGuestName, setNewGuestName] = useState("");
   const [isNewConversationOpen, setIsNewConversationOpen] = useState(false);
+  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: properties } = useQuery<Property[]>({
@@ -56,20 +58,37 @@ export default function Chat() {
     },
   });
 
-  const sendMessageMutation = useMutation({
-    mutationFn: async (content: string) => {
-      const res = await apiRequest("POST", "/api/messages", {
-        conversationId: selectedConversation,
-        content,
-        isBot: false,
+  // WebSocket setup
+  useEffect(() => {
+    chatWebSocket.connect();
+    setIsWebSocketConnected(chatWebSocket.getConnectionStatus());
+
+    const messageUnsubscribe = chatWebSocket.onMessage((data) => {
+      // Update messages cache with new messages
+      queryClient.invalidateQueries({ queryKey: ["/api/messages", data.userMessage.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations/property", selectedProperty] });
+    });
+
+    const errorUnsubscribe = chatWebSocket.onError((error) => {
+      toast({
+        title: "Erreur",
+        description: error,
+        variant: "destructive",
       });
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/messages", selectedConversation] });
-      setMessage("");
-    },
-  });
+    });
+
+    // Check connection status periodically
+    const statusInterval = setInterval(() => {
+      setIsWebSocketConnected(chatWebSocket.getConnectionStatus());
+    }, 1000);
+
+    return () => {
+      messageUnsubscribe();
+      errorUnsubscribe();
+      clearInterval(statusInterval);
+      chatWebSocket.disconnect();
+    };
+  }, [selectedProperty, toast]);
 
   useEffect(() => {
     if (properties && properties.length > 0 && !selectedProperty) {
@@ -83,7 +102,28 @@ export default function Chat() {
 
   const handleSend = () => {
     if (!message.trim() || !selectedConversation) return;
-    sendMessageMutation.mutate(message);
+    
+    // Send via WebSocket if connected, otherwise fall back to REST
+    if (isWebSocketConnected) {
+      chatWebSocket.sendMessage(selectedConversation, message);
+      setMessage("");
+    } else {
+      // Fallback to REST API
+      apiRequest("POST", "/api/messages", {
+        conversationId: selectedConversation,
+        content: message,
+        isBot: false,
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/messages", selectedConversation] });
+        setMessage("");
+      }).catch((error) => {
+        toast({
+          title: "Erreur",
+          description: "Impossible d'envoyer le message",
+          variant: "destructive",
+        });
+      });
+    }
   };
 
   const handleNewConversation = () => {
@@ -214,10 +254,18 @@ export default function Chat() {
                   <h3 className="font-semibold">
                     {conversations?.find(c => c.id === selectedConversation)?.guestName}
                   </h3>
-                  <Badge variant="secondary" className="gap-1 mt-1">
-                    <Bot className="w-3 h-3" />
-                    IA Active
-                  </Badge>
+                  <div className="flex gap-2 mt-1">
+                    <Badge variant="secondary" className="gap-1">
+                      <Bot className="w-3 h-3" />
+                      IA Active
+                    </Badge>
+                    {isWebSocketConnected && (
+                      <Badge variant="secondary" className="gap-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                        Temps réel
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -267,13 +315,11 @@ export default function Chat() {
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                    disabled={sendMessageMutation.isPending}
                     data-testid="input-message"
                   />
                   <Button
                     size="icon"
                     onClick={handleSend}
-                    disabled={sendMessageMutation.isPending}
                     data-testid="button-send"
                   >
                     <Send className="w-4 h-4" />
