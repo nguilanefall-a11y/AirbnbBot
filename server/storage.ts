@@ -68,8 +68,20 @@ export class MemStorage implements IStorage {
   async createProperty(insertProperty: InsertProperty): Promise<Property> {
     const id = randomUUID();
     const property: Property = { 
-      ...insertProperty, 
       id,
+      name: insertProperty.name,
+      description: insertProperty.description,
+      checkInTime: insertProperty.checkInTime ?? "15:00",
+      checkOutTime: insertProperty.checkOutTime ?? "11:00",
+      wifiName: insertProperty.wifiName ?? null,
+      wifiPassword: insertProperty.wifiPassword ?? null,
+      houseRules: insertProperty.houseRules ?? "",
+      amenities: insertProperty.amenities ?? [],
+      parkingInfo: insertProperty.parkingInfo ?? null,
+      address: insertProperty.address,
+      hostName: insertProperty.hostName,
+      hostPhone: insertProperty.hostPhone ?? null,
+      additionalInfo: insertProperty.additionalInfo ?? null,
       createdAt: new Date()
     };
     this.properties.set(id, property);
@@ -129,8 +141,10 @@ export class MemStorage implements IStorage {
   async createMessage(insertMessage: InsertMessage): Promise<Message> {
     const id = randomUUID();
     const message: Message = { 
-      ...insertMessage, 
       id,
+      conversationId: insertMessage.conversationId,
+      content: insertMessage.content,
+      isBot: insertMessage.isBot ?? false,
       createdAt: new Date()
     };
     this.messages.set(id, message);
