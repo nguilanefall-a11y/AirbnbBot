@@ -2,9 +2,14 @@
 
 ## Overview
 
-This is an AI-powered chatbot application designed for Airbnb property hosts to automate guest communication. The system allows hosts to manage multiple properties, create conversations with guests, and leverage OpenAI's GPT-5 model to automatically respond to common guest inquiries about check-in times, WiFi credentials, amenities, house rules, and other property-specific information.
+This is an AI-powered chatbot application designed for Airbnb property hosts to automate guest communication. The system features **two distinct spaces**:
 
-The application features a landing page showcasing the product, a chat interface for real-time guest conversations, and an admin panel for property management.
+1. **Espace Hôte** - Sophisticated admin interface where hosts manage multiple properties with comprehensive configuration options
+2. **Espace Voyageur** - Guest-facing chat interface accessible via unique links, restricted to ONE property per guest
+
+Hosts configure detailed property information (localisation, check-in procedures, WiFi, amenities, rules, etc.) and generate unique access links for their guests. Guests access their specific property via these links and interact with an AI assistant powered by OpenAI's GPT-4 model that provides contextual answers based on the host's configuration.
+
+The application features a landing page showcasing the product, separate host and guest spaces, real-time WebSocket chat, and auto-save functionality.
 
 ## User Preferences
 
@@ -29,9 +34,20 @@ Preferred communication style: Simple, everyday language.
 - Design guidelines emphasize warmth, trust, and modern messaging interfaces
 
 **Page Structure:**
-- Landing page with hero, features, how-it-works, testimonials, and CTA sections
-- Chat page with dual-panel layout (conversation list + message thread)
-- Admin page for property CRUD operations
+- **Landing page** (`/`) - Hero, features, how-it-works, testimonials, and CTA sections
+- **Host Space** (`/host`) - Sophisticated admin interface with:
+  - Property list sidebar
+  - Guest link generator with copy functionality
+  - Tabbed configuration (5 tabs: Général, Check-in/out, Équipements, Règles, Infos Utiles)
+  - Auto-save on field blur
+  - Real-time toast notifications
+- **Guest Space** (`/guest/:accessKey`) - Simplified chat interface with:
+  - Access via unique property link only
+  - Property-specific branding
+  - Conversation starter dialog
+  - Real-time AI chat with WebSocket
+  - Restricted to ONE property (security enforced)
+- **Legacy Chat page** (`/chat`) - Host conversation management (maintained for backward compatibility)
 - Component-based architecture with reusable UI components
 
 **State Management:**
@@ -49,10 +65,14 @@ Preferred communication style: Simple, everyday language.
 - WebSocket (ws library) for real-time bidirectional communication
 
 **API Design:**
-- RESTful endpoints for CRUD operations on properties, conversations, and messages
+- RESTful endpoints:
+  - Properties: GET `/api/properties`, GET `/api/properties/:id`, GET `/api/properties/by-key/:accessKey`, PATCH `/api/properties/:id`
+  - Conversations: GET `/api/conversations/property/:propertyId`, POST `/api/conversations`
+  - Messages: GET `/api/messages/:conversationId`, POST `/api/messages`
 - WebSocket endpoint (`/ws`) for real-time chat message delivery
 - Request/response logging middleware for debugging
 - JSON-based communication with validation via Zod schemas
+- Security: accessKey-based property access for guests
 
 **Server Architecture:**
 - Modular route registration pattern
@@ -64,7 +84,17 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 
 **Database Schema (PostgreSQL):**
-- `properties` table: Stores property information including name, description, check-in/out times, WiFi credentials, amenities array, house rules, and host contact details
+- `properties` table: Comprehensive property information organized by category:
+  - **System**: id (UUID), accessKey (unique 12-char), createdAt
+  - **General**: name, description
+  - **Location**: address, floor, doorCode, accessInstructions
+  - **Check-in/out**: checkInTime, checkOutTime, checkInProcedure, checkOutProcedure, keyLocation
+  - **WiFi**: wifiName, wifiPassword
+  - **Amenities**: amenities (array), kitchenEquipment, applianceInstructions, heatingInstructions
+  - **Rules**: houseRules, maxGuests, petsAllowed, smokingAllowed, partiesAllowed, garbageInstructions
+  - **Transport & Services**: parkingInfo, publicTransport, nearbyShops, restaurants
+  - **Contact**: hostName, hostPhone, emergencyContact
+  - **Additional**: additionalInfo, faqs
 - `conversations` table: Links properties to guest conversations with guest name and timestamps
 - `messages` table: Stores individual chat messages with conversation reference, content, bot flag, and timestamps
 - Foreign key relationships with cascade deletion to maintain referential integrity
@@ -76,9 +106,10 @@ Preferred communication style: Simple, everyday language.
 - Migration support via drizzle-kit
 
 **Storage Abstraction:**
-- IStorage interface defines contract for data operations
+- IStorage interface defines contract for data operations including `getPropertyByAccessKey()`
 - MemStorage provides in-memory implementation for development/testing
-- Default property seeded on initialization
+- Default property seeded on initialization with accessKey "demo-paris-01"
+- Auto-generates unique 12-character accessKey for new properties
 - Ready for PostgreSQL implementation swap
 
 ### Real-time Communication
@@ -94,12 +125,13 @@ Preferred communication style: Simple, everyday language.
 ### AI Integration
 
 **OpenAI Integration:**
-- Uses OpenAI GPT-5 model (referenced as latest model from August 2025)
-- System prompt constructed dynamically from property details
-- Context includes: property name, description, address, host info, check-in/out times, WiFi credentials, amenities, parking, house rules, and additional info
+- Uses OpenAI GPT-4 model via chat completions endpoint
+- System prompt constructed dynamically from comprehensive property configuration
+- Context includes all configured fields: location details, check-in/out procedures, WiFi, amenities, equipment instructions, house rules, parking, transport, shops, emergency contacts, FAQs, and more
 - Configured for friendly, professional, and concise responses
 - 500 token max completion limit for efficient responses
 - Error handling with fallback messages
+- Graceful degradation when API quota is exceeded
 
 **Response Strategy:**
 - AI instructed to suggest contacting host directly for unknown information
