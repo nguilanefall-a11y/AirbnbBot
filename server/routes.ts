@@ -28,6 +28,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/properties/by-key/:accessKey", async (req, res) => {
+    try {
+      const property = await storage.getPropertyByAccessKey(req.params.accessKey);
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+      res.json(property);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch property" });
+    }
+  });
+
   app.post("/api/properties", async (req, res) => {
     try {
       const validatedData = insertPropertySchema.parse(req.body);

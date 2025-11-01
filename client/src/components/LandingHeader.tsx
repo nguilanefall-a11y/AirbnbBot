@@ -49,13 +49,13 @@ export default function LandingHeader() {
               Essayer
             </Button>
           </Link>
-          <Link href="/admin">
+          <Link href="/host">
             <Button 
               size="sm" 
               className="rounded-full"
               data-testid="button-signup"
             >
-              Configuration
+              Espace Hôte
             </Button>
           </Link>
         </div>

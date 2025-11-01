@@ -10,6 +10,7 @@ import { randomUUID } from "crypto";
 
 export interface IStorage {
   getProperty(id: string): Promise<Property | undefined>;
+  getPropertyByAccessKey(accessKey: string): Promise<Property | undefined>;
   getAllProperties(): Promise<Property[]>;
   createProperty(property: InsertProperty): Promise<Property>;
   updateProperty(id: string, property: Partial<InsertProperty>): Promise<Property | undefined>;
@@ -35,21 +36,42 @@ export class MemStorage implements IStorage {
     this.messages = new Map();
     
     const defaultPropertyId = randomUUID();
+    const defaultAccessKey = "demo-paris-01";
     const defaultProperty: Property = {
       id: defaultPropertyId,
+      accessKey: defaultAccessKey,
       name: "Appartement Lumineux à Paris",
       description: "Bel appartement de 2 chambres au cœur de Paris, parfait pour 4 personnes",
+      address: "15 Rue de Rivoli, 75001 Paris",
+      floor: "3ème étage",
+      doorCode: "A1234",
+      accessInstructions: "Prendre l'ascenseur jusqu'au 3ème étage, appartement sur la droite",
       checkInTime: "15:00",
       checkOutTime: "11:00",
+      checkInProcedure: "Récupérer les clés dans la boîte à clés sécurisée à l'entrée de l'immeuble",
+      checkOutProcedure: "Laisser les clés sur la table de l'entrée",
+      keyLocation: "Boîte à clés sécurisée code: 5678",
       wifiName: "ParisHome_WiFi",
       wifiPassword: "paris2024",
-      houseRules: "Non fumeur. Animaux non acceptés. Respecter le calme après 22h.",
       amenities: ["WiFi gratuit", "Cuisine équipée", "Lave-linge", "Climatisation", "Netflix"],
-      parkingInfo: "Parking public à 200m, tarif 2€/heure",
-      address: "15 Rue de Rivoli, 75001 Paris",
+      kitchenEquipment: "Four, micro-ondes, cafetière Nespresso, bouilloire",
+      houseRules: "Non fumeur. Respecter le calme après 22h. Sortir les poubelles le mardi et vendredi.",
+      maxGuests: "4",
+      petsAllowed: false,
+      smokingAllowed: false,
+      partiesAllowed: false,
+      parkingInfo: "Parking public à 200m, tarif 2€/heure ou parking Indigo à 400m",
+      publicTransport: "Métro Châtelet à 5 min à pied (lignes 1, 4, 7, 11, 14)",
+      nearbyShops: "Monoprix à 100m, Franprix au coin de la rue",
+      restaurants: "Nombreux restaurants rue de Rivoli et rue Saint-Antoine",
       hostName: "Sophie Martin",
       hostPhone: "+33 6 12 34 56 78",
-      additionalInfo: "Boulangerie au coin de la rue. Métro Châtelet à 5 min à pied.",
+      emergencyContact: "Concierge: +33 1 23 45 67 89",
+      heatingInstructions: "Chauffage central, thermostat dans le salon, température recommandée: 20°C",
+      garbageInstructions: "Sortir les poubelles le mardi et vendredi soir dans le local poubelle au rez-de-chaussée",
+      applianceInstructions: "Lave-linge: programme coton 40°C recommandé. Lave-vaisselle: tablettes sous l'évier",
+      additionalInfo: "Boulangerie au coin de la rue. Code WiFi sur le frigo.",
+      faqs: "Q: Où sont les draps supplémentaires? R: Dans l'armoire de la chambre principale.\nQ: Comment fonctionne la climatisation? R: Télécommande sur la table basse, mode AUTO recommandé.",
       createdAt: new Date(),
     };
     this.properties.set(defaultPropertyId, defaultProperty);
@@ -57,6 +79,10 @@ export class MemStorage implements IStorage {
 
   async getProperty(id: string): Promise<Property | undefined> {
     return this.properties.get(id);
+  }
+
+  async getPropertyByAccessKey(accessKey: string): Promise<Property | undefined> {
+    return Array.from(this.properties.values()).find(p => p.accessKey === accessKey);
   }
 
   async getAllProperties(): Promise<Property[]> {
@@ -67,21 +93,42 @@ export class MemStorage implements IStorage {
 
   async createProperty(insertProperty: InsertProperty): Promise<Property> {
     const id = randomUUID();
+    const accessKey = Math.random().toString(36).substring(2, 14);
     const property: Property = { 
       id,
+      accessKey,
       name: insertProperty.name,
       description: insertProperty.description,
+      address: insertProperty.address,
+      floor: insertProperty.floor ?? null,
+      doorCode: insertProperty.doorCode ?? null,
+      accessInstructions: insertProperty.accessInstructions ?? null,
       checkInTime: insertProperty.checkInTime ?? "15:00",
       checkOutTime: insertProperty.checkOutTime ?? "11:00",
+      checkInProcedure: insertProperty.checkInProcedure ?? null,
+      checkOutProcedure: insertProperty.checkOutProcedure ?? null,
+      keyLocation: insertProperty.keyLocation ?? null,
       wifiName: insertProperty.wifiName ?? null,
       wifiPassword: insertProperty.wifiPassword ?? null,
-      houseRules: insertProperty.houseRules ?? "",
       amenities: insertProperty.amenities ?? [],
+      kitchenEquipment: insertProperty.kitchenEquipment ?? null,
+      houseRules: insertProperty.houseRules ?? "",
+      maxGuests: insertProperty.maxGuests ?? null,
+      petsAllowed: insertProperty.petsAllowed ?? false,
+      smokingAllowed: insertProperty.smokingAllowed ?? false,
+      partiesAllowed: insertProperty.partiesAllowed ?? false,
       parkingInfo: insertProperty.parkingInfo ?? null,
-      address: insertProperty.address,
+      publicTransport: insertProperty.publicTransport ?? null,
+      nearbyShops: insertProperty.nearbyShops ?? null,
+      restaurants: insertProperty.restaurants ?? null,
       hostName: insertProperty.hostName,
       hostPhone: insertProperty.hostPhone ?? null,
+      emergencyContact: insertProperty.emergencyContact ?? null,
+      heatingInstructions: insertProperty.heatingInstructions ?? null,
+      garbageInstructions: insertProperty.garbageInstructions ?? null,
+      applianceInstructions: insertProperty.applianceInstructions ?? null,
       additionalInfo: insertProperty.additionalInfo ?? null,
+      faqs: insertProperty.faqs ?? null,
       createdAt: new Date()
     };
     this.properties.set(id, property);

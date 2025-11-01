@@ -6,6 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Landing from "@/pages/Landing";
 import Chat from "@/pages/Chat";
 import Admin from "@/pages/Admin";
+import AdminHost from "@/pages/AdminHost";
+import Guest from "@/pages/Guest";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -14,6 +16,8 @@ function Router() {
       <Route path="/" component={Landing} />
       <Route path="/chat" component={Chat} />
       <Route path="/admin" component={Admin} />
+      <Route path="/host" component={AdminHost} />
+      <Route path="/guest/:accessKey" component={Guest} />
       <Route component={NotFound} />
     </Switch>
   );
