@@ -51,18 +51,18 @@ export default function LandingHeader() {
             <Button 
               variant="ghost" 
               size="sm"
-              data-testid="button-login"
+              data-testid="button-signup"
             >
-              Connexion
+              Créer un compte
             </Button>
           </a>
           <Button 
             size="sm" 
             className="rounded-full"
-            data-testid="button-signup"
+            data-testid="button-start-trial"
             onClick={() => window.location.href = '/pricing'}
           >
-            Commencer
+            Commencer l'essai gratuit
           </Button>
         </div>
       </div>
