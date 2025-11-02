@@ -7,7 +7,7 @@ This is an AI-powered chatbot application designed for Airbnb property hosts to 
 1. **Espace Hôte** - Sophisticated admin interface where hosts manage multiple properties with comprehensive configuration options
 2. **Espace Voyageur** - Guest-facing chat interface accessible via unique links, restricted to ONE property per guest
 
-Hosts configure detailed property information (localisation, check-in procedures, WiFi, amenities, rules, etc.) and generate unique access links for their guests. Guests access their specific property via these links and interact with an AI assistant powered by OpenAI's GPT-4 model that provides contextual answers based on the host's configuration.
+Hosts configure detailed property information (localisation, check-in procedures, WiFi, amenities, rules, etc.) and generate unique access links for their guests. Guests access their specific property via these links and interact with an AI assistant powered by Google Gemini API that provides contextual answers based on the host's configuration.
 
 The application features a landing page showcasing the product, separate host and guest spaces, real-time WebSocket chat, auto-save functionality, and **subscription-based monetization with Stripe**.
 
@@ -147,29 +147,37 @@ Preferred communication style: Simple, everyday language.
 
 ### AI Integration
 
-**OpenAI Integration:**
-- Uses OpenAI GPT-4 model via chat completions endpoint
-- System prompt constructed dynamically from comprehensive property configuration
+**Google Gemini Integration:**
+- **Migration Note**: Migrated from OpenAI to Google Gemini API (November 2025) for free tier access
+- Uses Google Gemini "gemini-2.5-flash" model for fast, cost-effective responses
+- Free quota: 15 requests/minute, 1500 requests/day (sufficient for development and moderate production use)
+- System prompt constructed dynamically from comprehensive property configuration (25+ fields)
 - Context includes all configured fields: location details, check-in/out procedures, WiFi, amenities, equipment instructions, house rules, parking, transport, shops, emergency contacts, FAQs, and more
 - Configured for friendly, professional, and concise responses
-- 500 token max completion limit for efficient responses
 - Error handling with fallback messages
-- Graceful degradation when API quota is exceeded
+- Required: `GEMINI_API_KEY` environment variable (from Google AI Studio, not Vertex AI)
 
 **Response Strategy:**
 - AI instructed to suggest contacting host directly for unknown information
 - Maintains brand voice of hospitality and helpfulness
 - French language interface (primary language: French)
+- Leverages all property details to provide accurate, context-aware responses
 
 ## External Dependencies
 
 ### Third-party Services
 
-**OpenAI API:**
-- Required: `OPENAI_API_KEY` environment variable
-- Model: GPT-5 (chat completions endpoint)
+**Google Gemini API:**
+- Required: `GEMINI_API_KEY` environment variable
+- Model: "gemini-2.5-flash" (latest fast model as of November 2025)
 - Purpose: Generate contextual responses to guest inquiries
-- Configuration: Max 500 completion tokens per request
+- Quota: 15 requests/minute, 1500 requests/day (free tier)
+- API key source: Google AI Studio (not Vertex AI)
+
+**Stripe (Optional):**
+- Required only for subscription features: `STRIPE_SECRET_KEY`, `VITE_STRIPE_PUBLIC_KEY`
+- Used for payment processing and subscription management
+- Application functions without Stripe for testing AI features
 
 **Database:**
 - PostgreSQL via Neon serverless (`@neondatabase/serverless`)

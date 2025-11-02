@@ -7,11 +7,10 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertPropertySchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
 import { generateChatResponse } from "./gemini";
 
-// Initialize Stripe
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
-}
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+// Initialize Stripe (optional - only needed for subscription features)
+const stripe = process.env.STRIPE_SECRET_KEY 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware (from Replit Auth blueprint)
@@ -122,6 +121,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create subscription with 7-day trial
   app.post('/api/create-subscription', isAuthenticated, async (req: any, res) => {
     try {
+      if (!stripe) {
+        return res.status(503).json({ error: "Payment system not configured" });
+      }
+
       const userId = req.user.claims.sub;
       const { plan } = req.body; // 'pro' or 'business'
       
@@ -205,14 +208,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      if (!stripe) {
+        return res.status(503).json({ error: "Payment system not configured" });
+      }
+
       const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
       
       res.json({
         plan: user.plan,
         status: subscription.status,
         trialEndsAt: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        currentPeriodEnd: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
+        cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
       });
     } catch (error: any) {
       console.error("Error fetching subscription:", error);
@@ -223,6 +230,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Cancel subscription
   app.post('/api/cancel-subscription', isAuthenticated, async (req: any, res) => {
     try {
+      if (!stripe) {
+        return res.status(503).json({ error: "Payment system not configured" });
+      }
+
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
@@ -236,7 +247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ 
         message: "Subscription will be canceled at period end",
-        cancelAt: new Date(subscription.current_period_end * 1000),
+        cancelAt: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
       });
     } catch (error: any) {
       console.error("Error canceling subscription:", error);
