@@ -37,11 +37,11 @@ export default function LandingHeader() {
             Tarifs
           </Link>
           <a 
-            href="#testimonials" 
+            href="#contact" 
             className="text-sm font-medium hover-elevate px-3 py-2 rounded-md transition-colors"
-            data-testid="link-testimonials"
+            data-testid="link-contact"
           >
-            Témoignages
+            Contact
           </a>
         </nav>
         

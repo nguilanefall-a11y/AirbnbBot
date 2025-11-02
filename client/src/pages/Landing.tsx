@@ -3,7 +3,7 @@ import LandingHero from "@/components/LandingHero";
 import FeaturesSection from "@/components/FeaturesSection";
 import HowItWorksSection from "@/components/HowItWorksSection";
 import ChatDemoSection from "@/components/ChatDemoSection";
-import TestimonialsSection from "@/components/TestimonialsSection";
+import ContactSection from "@/components/ContactSection";
 import CTASection from "@/components/CTASection";
 
 export default function Landing() {
@@ -19,8 +19,8 @@ export default function Landing() {
           <HowItWorksSection />
         </div>
         <ChatDemoSection />
-        <div id="testimonials">
-          <TestimonialsSection />
+        <div id="contact">
+          <ContactSection />
         </div>
         <CTASection />
       </main>
