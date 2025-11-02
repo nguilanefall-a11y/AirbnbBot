@@ -5,7 +5,7 @@ import Stripe from "stripe";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertPropertySchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
-import { generateChatResponse } from "./openai";
+import { generateChatResponse } from "./gemini";
 
 // Initialize Stripe
 if (!process.env.STRIPE_SECRET_KEY) {
