@@ -15,7 +15,9 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   updateUserStripeInfo(userId: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User | undefined>;
-  updateUserPlan(userId: string, plan: string, subscriptionStatus: string): Promise<User | undefined>;
+  updateUserSubscription(userId: string, subscriptionStatus: string): Promise<User | undefined>;
+  startTrial(userId: string): Promise<User | undefined>;
+  updatePropertyCount(userId: string, count: number): Promise<User | undefined>;
   
   getProperty(id: string): Promise<Property | undefined>;
   getPropertyByAccessKey(accessKey: string): Promise<Property | undefined>;
@@ -107,9 +109,10 @@ export class MemStorage implements IStorage {
       profileImageUrl: userData.profileImageUrl ?? null,
       stripeCustomerId: existing?.stripeCustomerId ?? null,
       stripeSubscriptionId: existing?.stripeSubscriptionId ?? null,
-      plan: existing?.plan ?? "free",
-      trialEndsAt: existing?.trialEndsAt ?? null,
       subscriptionStatus: existing?.subscriptionStatus ?? null,
+      trialStartedAt: existing?.trialStartedAt ?? null,
+      trialEndsAt: existing?.trialEndsAt ?? null,
+      activePropertyCount: existing?.activePropertyCount ?? "0",
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -132,14 +135,45 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async updateUserPlan(userId: string, plan: string, subscriptionStatus: string): Promise<User | undefined> {
+  async updateUserSubscription(userId: string, subscriptionStatus: string): Promise<User | undefined> {
     const user = this.users.get(userId);
     if (!user) return undefined;
     
     const updated: User = {
       ...user,
-      plan,
       subscriptionStatus,
+      updatedAt: new Date(),
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  async startTrial(userId: string): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    
+    const now = new Date();
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 7); // 7 days trial
+    
+    const updated: User = {
+      ...user,
+      trialStartedAt: now,
+      trialEndsAt: trialEnd,
+      subscriptionStatus: "trialing",
+      updatedAt: now,
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  async updatePropertyCount(userId: string, count: number): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    
+    const updated: User = {
+      ...user,
+      activePropertyCount: count.toString(),
       updatedAt: new Date(),
     };
     this.users.set(userId, updated);

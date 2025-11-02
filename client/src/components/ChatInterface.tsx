@@ -3,17 +3,18 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, Loader2 } from "lucide-react";
 import ChatMessage from "./ChatMessage";
 
 export default function ChatInterface() {
   const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState([
-    { id: 1, message: "Bonjour! Comment puis-je vous aider?", isBot: true, timestamp: "10:00" }
+    { id: 1, message: "Bonjour! Je suis l'assistant IA de l'Appartement Paris 11e. Comment puis-je vous aider? Vous pouvez me poser des questions sur le WiFi, les équipements, le check-in, ou n'importe quoi d'autre!", isBot: true, timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }
   ]);
 
-  const handleSend = () => {
-    if (!message.trim()) return;
+  const handleSend = async () => {
+    if (!message.trim() || isLoading) return;
     
     const newMessage = {
       id: messages.length + 1,
@@ -24,19 +25,48 @@ export default function ChatInterface() {
     
     setMessages([...messages, newMessage]);
     setMessage("");
+    setIsLoading(true);
     
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/demo-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: newMessage.message }),
+      });
+      
+      if (!res.ok) {
+        throw new Error('Failed to get response');
+      }
+      
+      const data = await res.json();
+      
       const botResponse = {
         id: messages.length + 2,
-        message: "Merci pour votre message! Je suis l'assistant IA et je peux vous aider avec des informations sur la propriété, le check-in, les équipements, et plus encore.",
+        message: data.botMessage,
         isBot: true,
         timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, botResponse]);
-    }, 1000);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorResponse = {
+        id: messages.length + 2,
+        message: "Désolé, une erreur s'est produite. Veuillez réessayer.",
+        isBot: true,
+        timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const quickReplies = ["Check-in", "WiFi", "Parking", "Équipements"];
+  const quickReplies = [
+    "Comment me connecter au WiFi ?",
+    "Où sont les produits de nettoyage ?",
+    "Y a-t-il un canapé-lit ?",
+    "Comment utiliser Netflix ?"
+  ];
 
   return (
     <Card className="flex flex-col h-[600px] overflow-hidden">
@@ -66,8 +96,12 @@ export default function ChatInterface() {
               variant="outline"
               size="sm"
               className="text-xs"
-              onClick={() => setMessage(reply)}
-              data-testid={`button-quick-${reply.toLowerCase()}`}
+              onClick={() => {
+                setMessage(reply);
+                setTimeout(() => handleSend(), 100);
+              }}
+              disabled={isLoading}
+              data-testid={`button-quick-${reply.toLowerCase().replace(/\s+/g, '-').replace(/[?]/g, '')}`}
             >
               {reply}
             </Button>
@@ -85,9 +119,10 @@ export default function ChatInterface() {
           <Button 
             size="icon"
             onClick={handleSend}
+            disabled={isLoading || !message.trim()}
             data-testid="button-send-message"
           >
-            <Send className="w-4 h-4" />
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>
       </div>

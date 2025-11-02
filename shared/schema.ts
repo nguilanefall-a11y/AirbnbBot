@@ -24,12 +24,13 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   
-  // Stripe fields
+  // Subscription fields
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
-  plan: varchar("plan").notNull().default("free"), // free, pro, business
+  subscriptionStatus: varchar("subscription_status"), // trialing, active, canceled, past_due
+  trialStartedAt: timestamp("trial_started_at"),
   trialEndsAt: timestamp("trial_ends_at"),
-  subscriptionStatus: varchar("subscription_status"), // active, trialing, canceled, past_due
+  activePropertyCount: varchar("active_property_count").default("0"),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -114,11 +115,12 @@ export const messages = pgTable("messages", {
 export const upsertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
   updatedAt: true,
-  plan: true,
+  trialStartedAt: true,
   trialEndsAt: true,
   subscriptionStatus: true,
   stripeCustomerId: true,
   stripeSubscriptionId: true,
+  activePropertyCount: true,
 });
 
 export const insertPropertySchema = createInsertSchema(properties).omit({

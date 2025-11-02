@@ -12,6 +12,41 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
 
+// Middleware to ensure user has active subscription or is in trial
+async function ensureHostAccess(req: any, res: any, next: any) {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if user is in trial period
+    if (user.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
+      return next(); // Trial is active
+    }
+
+    // Check if user has active subscription
+    if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
+      return next(); // Subscription is active
+    }
+
+    // Trial expired and no active subscription
+    return res.status(403).json({ 
+      error: "Subscription required",
+      message: "Your free trial has ended. Please subscribe to continue using the platform.",
+      trialEnded: true
+    });
+  } catch (error) {
+    console.error("Error checking host access:", error);
+    return res.status(500).json({ error: "Failed to verify access" });
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware (from Replit Auth blueprint)
   await setupAuth(app);
@@ -20,7 +55,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      let user = await storage.getUser(userId);
+      
+      // If user exists and doesn't have a trial started, start it automatically
+      if (user && !user.trialStartedAt) {
+        user = await storage.startTrial(userId) || user;
+      }
+      
       res.json(user);
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -62,18 +103,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/properties", isAuthenticated, async (req: any, res) => {
+  app.post("/api/properties", isAuthenticated, ensureHostAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const validatedData = insertPropertySchema.parse(req.body);
       const property = await storage.createProperty(validatedData, userId);
+      
+      // Update property count for subscription
+      const userProperties = await storage.getPropertiesByUser(userId);
+      const newCount = userProperties.length;
+      await storage.updatePropertyCount(userId, newCount);
+      
+      // Update Stripe subscription quantity if user has an active subscription
+      const user = await storage.getUser(userId);
+      if (user?.stripeSubscriptionId && stripe) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+          if (subscription.items.data.length > 0) {
+            await stripe.subscriptions.update(user.stripeSubscriptionId, {
+              items: [{ id: subscription.items.data[0].id, quantity: newCount }],
+            });
+          }
+        } catch (stripeError) {
+          console.error("Error updating Stripe quantity:", stripeError);
+          // Don't fail the property creation if Stripe update fails
+        }
+      }
+      
       res.status(201).json(property);
     } catch (error) {
       res.status(400).json({ error: "Invalid property data" });
     }
   });
 
-  app.patch("/api/properties/:id", async (req, res) => {
+  app.patch("/api/properties/:id", isAuthenticated, ensureHostAccess, async (req, res) => {
     try {
       const property = await storage.updateProperty(req.params.id, req.body);
       if (!property) {
@@ -85,12 +148,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/properties/:id", async (req, res) => {
+  app.delete("/api/properties/:id", isAuthenticated, ensureHostAccess, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
       const deleted = await storage.deleteProperty(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Property not found" });
       }
+      
+      // Update property count for subscription
+      const userProperties = await storage.getPropertiesByUser(userId);
+      const newCount = userProperties.length;
+      await storage.updatePropertyCount(userId, newCount);
+      
+      // Update Stripe subscription quantity if user has an active subscription
+      const user = await storage.getUser(userId);
+      if (user?.stripeSubscriptionId && stripe) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+          if (subscription.items.data.length > 0) {
+            if (newCount === 0) {
+              // Cancel subscription if no properties left
+              await stripe.subscriptions.cancel(user.stripeSubscriptionId);
+              await storage.updateUserSubscription(userId, 'canceled');
+            } else {
+              // Update quantity
+              await stripe.subscriptions.update(user.stripeSubscriptionId, {
+                items: [{ id: subscription.items.data[0].id, quantity: newCount }],
+              });
+            }
+          }
+        } catch (stripeError) {
+          console.error("Error updating Stripe quantity:", stripeError);
+          // Don't fail the property deletion if Stripe update fails
+        }
+      }
+      
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete property" });
@@ -118,19 +211,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Stripe subscription routes
-  // Create subscription with 7-day trial
-  app.post('/api/create-subscription', isAuthenticated, async (req: any, res) => {
+  // Start paid subscription after trial (29.90€ per property)
+  app.post('/api/start-subscription', isAuthenticated, async (req: any, res) => {
     try {
       if (!stripe) {
         return res.status(503).json({ error: "Payment system not configured" });
       }
 
       const userId = req.user.claims.sub;
-      const { plan } = req.body; // 'pro' or 'business'
-      
       let user = await storage.getUser(userId);
+      
       if (!user) {
         return res.status(404).json({ error: "User not found" });
+      }
+
+      // Get user's properties count
+      const userProperties = await storage.getPropertiesByUser(userId);
+      const propertyCount = userProperties.length;
+
+      if (propertyCount === 0) {
+        return res.status(400).json({ error: "You must have at least one property to subscribe" });
       }
 
       // If user already has a subscription, retrieve it
@@ -154,35 +254,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateUserStripeInfo(userId, stripeCustomerId, '');
       }
 
-      // Determine price based on plan
-      const priceId = plan === 'business' 
-        ? process.env.STRIPE_PRICE_BUSINESS_ID 
-        : process.env.STRIPE_PRICE_PRO_ID;
-
+      // Get price ID from environment (should be set to 29.90€ per unit)
+      const priceId = process.env.STRIPE_PRICE_PER_PROPERTY_ID;
       if (!priceId) {
-        return res.status(400).json({ error: "Plan price ID not configured" });
+        return res.status(400).json({ error: "Subscription price not configured. Please set STRIPE_PRICE_PER_PROPERTY_ID" });
       }
 
-      // Create subscription with 7-day trial
+      // Create subscription with quantity = number of properties
       const subscription = await stripe.subscriptions.create({
         customer: stripeCustomerId,
-        items: [{ price: priceId }],
+        items: [{ price: priceId, quantity: propertyCount }],
         payment_behavior: 'default_incomplete',
         payment_settings: { save_default_payment_method: 'on_subscription' },
-        trial_period_days: 7,
         expand: ['latest_invoice.payment_intent'],
       });
 
-      // Update user with subscription info and trial
+      // Update user with subscription info
       await storage.updateUserStripeInfo(userId, stripeCustomerId, subscription.id);
-      const trialEnd = new Date();
-      trialEnd.setDate(trialEnd.getDate() + 7);
-      await storage.updateUserPlan(userId, plan, 'trialing');
+      await storage.updateUserSubscription(userId, 'active');
 
       res.json({
         subscriptionId: subscription.id,
         clientSecret: (subscription.latest_invoice as any)?.payment_intent?.client_secret,
-        trialEnd,
+        propertyCount,
+        pricePerProperty: 29.90,
+        totalPrice: propertyCount * 29.90,
       });
     } catch (error: any) {
       console.error("Error creating subscription:", error);
@@ -202,9 +298,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!user.stripeSubscriptionId) {
         return res.json({
-          plan: user.plan,
-          status: null,
+          status: user.subscriptionStatus || null,
           trialEndsAt: user.trialEndsAt,
+          activePropertyCount: parseInt(user.activePropertyCount || "0"),
         });
       }
 
@@ -215,11 +311,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
       
       res.json({
-        plan: user.plan,
         status: subscription.status,
         trialEndsAt: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
         currentPeriodEnd: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000) : null,
         cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+        activePropertyCount: parseInt(user.activePropertyCount || "0"),
       });
     } catch (error: any) {
       console.error("Error fetching subscription:", error);
@@ -252,6 +348,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error canceling subscription:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Demo chat route - public API for testing AI on landing page
+  app.post("/api/demo-chat", async (req, res) => {
+    try {
+      const { message } = req.body;
+      
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      // Get the demo property (Paris 11e)
+      const demoProperty = await storage.getPropertyByAccessKey("demo-paris-01");
+      if (!demoProperty) {
+        return res.status(404).json({ error: "Demo property not found" });
+      }
+
+      // Generate AI response using demo property
+      const aiResponse = await generateChatResponse(message, demoProperty);
+      
+      res.json({
+        userMessage: message,
+        botMessage: aiResponse,
+      });
+    } catch (error) {
+      console.error("Error in demo chat:", error);
+      res.status(500).json({ error: "Failed to generate response" });
     }
   });
 
