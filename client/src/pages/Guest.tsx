@@ -9,12 +9,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { MessageSquare, Send, Bot, User, Plus } from "lucide-react";
+import { MessageSquare, Send, Bot, User, Plus, Sparkles } from "lucide-react";
 import type { Property, Conversation, Message } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useToast } from "@/hooks/use-toast";
 import { chatWebSocket } from "@/lib/websocket";
+import heroImage from "@assets/stock_images/beautiful_welcoming__f0be1f33.jpg";
 
 export default function Guest() {
   const { toast } = useToast();
@@ -152,15 +153,41 @@ export default function Guest() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
+      {!selectedConversation && (
+        <div className="fixed inset-0 z-0">
+          <img 
+            src={heroImage} 
+            alt="Welcome background" 
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/70" />
+        </div>
+      )}
+
+      <header className={cn(
+        "sticky top-0 z-50 w-full border-b",
+        !selectedConversation ? "bg-black/20 backdrop-blur-md border-white/10" : "bg-background/95 backdrop-blur"
+      )}>
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-              <MessageSquare className="w-6 h-6 text-primary-foreground" />
+            <div className={cn(
+              "w-10 h-10 rounded-lg flex items-center justify-center",
+              !selectedConversation ? "bg-white/20 backdrop-blur" : "bg-primary"
+            )}>
+              <MessageSquare className={cn(
+                "w-6 h-6",
+                !selectedConversation ? "text-white" : "text-primary-foreground"
+              )} />
             </div>
             <div>
-              <h1 className="font-bold text-lg">{property.name}</h1>
-              <p className="text-xs text-muted-foreground">Assistant IA</p>
+              <h1 className={cn(
+                "font-bold text-lg",
+                !selectedConversation && "text-white"
+              )}>{property.name}</h1>
+              <p className={cn(
+                "text-xs",
+                !selectedConversation ? "text-white/70" : "text-muted-foreground"
+              )}>Assistant IA</p>
             </div>
           </div>
           <ThemeToggle />
@@ -169,15 +196,17 @@ export default function Guest() {
 
       <div className="container mx-auto p-4 h-[calc(100vh-4rem)]">
         {!selectedConversation ? (
-          <div className="h-full flex items-center justify-center">
-            <Card className="p-8 max-w-md w-full">
+          <div className="h-full flex items-center justify-center relative z-10">
+            <Card className="p-8 max-w-md w-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-white/20">
               <div className="text-center mb-6">
-                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <Bot className="w-8 h-8 text-primary" />
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                  <Sparkles className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Bienvenue!</h2>
-                <p className="text-muted-foreground">
-                  Je suis l'assistant virtuel de {property.hostName}. Posez-moi toutes vos questions sur {property.name}.
+                <h2 className="text-3xl font-bold mb-3 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                  Bienvenue chez vous !
+                </h2>
+                <p className="text-muted-foreground text-base leading-relaxed">
+                  Je suis votre assistant personnel pour {property.name}. Je suis là pour répondre à toutes vos questions et rendre votre séjour inoubliable.
                 </p>
               </div>
 
@@ -212,34 +241,39 @@ export default function Guest() {
 
               <Dialog open={isNameDialogOpen} onOpenChange={setIsNameDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="w-full mt-4" data-testid="button-start-conversation">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Démarrer une conversation
+                  <Button className="w-full mt-4 h-12 text-base" size="lg" data-testid="button-start-conversation">
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Commencer la conversation
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Commençons!</DialogTitle>
+                    <DialogTitle className="text-2xl text-center">Ravi de vous rencontrer ! 👋</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 pt-4">
+                    <p className="text-center text-muted-foreground text-sm">
+                      Pour personnaliser notre échange, comment puis-je vous appeler ?
+                    </p>
                     <div>
                       <Label htmlFor="guest-name">Votre prénom</Label>
                       <Input
                         id="guest-name"
-                        placeholder="Ex: Marie"
+                        placeholder="Ex: Marie, John, 玛丽..."
                         value={guestName}
                         onChange={(e) => setGuestName(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && handleStartConversation()}
                         data-testid="input-guest-name"
+                        className="text-base"
                       />
                     </div>
                     <Button
-                      className="w-full"
+                      className="w-full h-11"
                       onClick={handleStartConversation}
                       disabled={createConversationMutation.isPending}
                       data-testid="button-create-conversation"
                     >
-                      Commencer
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      C'est parti !
                     </Button>
                   </div>
                 </DialogContent>
