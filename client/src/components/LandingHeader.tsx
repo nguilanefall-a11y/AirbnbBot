@@ -47,7 +47,7 @@ export default function LandingHeader() {
         
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <a href="/api/login">
+          <Link href="/auth">
             <Button 
               variant="ghost" 
               size="sm"
@@ -55,12 +55,12 @@ export default function LandingHeader() {
             >
               Créer un compte
             </Button>
-          </a>
+          </Link>
           <Button 
             size="sm" 
             className="rounded-full"
             data-testid="button-start-trial"
-            onClick={() => window.location.href = '/pricing'}
+            onClick={() => window.location.href = '/auth'}
           >
             Commencer l'essai gratuit
           </Button>

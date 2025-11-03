@@ -19,7 +19,8 @@ export const sessions = pgTable(
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
+  email: varchar("email").unique().notNull(),
+  password: varchar("password").notNull(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
@@ -112,6 +113,29 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  trialStartedAt: true,
+  trialEndsAt: true,
+  subscriptionStatus: true,
+  stripeCustomerId: true,
+  stripeSubscriptionId: true,
+  activePropertyCount: true,
+  profileImageUrl: true,
+});
+
+export const registerSchema = insertUserSchema.extend({
+  email: z.string().email("Email invalide"),
+  password: z.string().min(6, "Le mot de passe doit contenir au moins 6 caractères"),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email("Email invalide"),
+  password: z.string().min(1, "Mot de passe requis"),
+});
+
 export const upsertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
   updatedAt: true,
@@ -150,5 +174,8 @@ export type Conversation = typeof conversations.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
 
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type RegisterUser = z.infer<typeof registerSchema>;
+export type LoginUser = z.infer<typeof loginSchema>;
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
 export type User = typeof users.$inferSelect;

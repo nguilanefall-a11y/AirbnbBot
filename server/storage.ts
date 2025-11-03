@@ -11,12 +11,14 @@ import {
 import { randomUUID } from "crypto";
 
 export interface IStorage {
-  // User operations (IMPORTANT - mandatory for Replit Auth)
+  // User operations
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: { email: string; password: string; firstName?: string | null; lastName?: string | null }): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
   updateUserStripeInfo(userId: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User | undefined>;
   updateUserSubscription(userId: string, subscriptionStatus: string): Promise<User | undefined>;
-  startTrial(userId: string): Promise<User | undefined>;
+  startTrial(userId: string, trialStart: Date, trialEnd: Date): Promise<User | undefined>;
   updatePropertyCount(userId: string, count: number): Promise<User | undefined>;
   
   getProperty(id: string): Promise<Property | undefined>;
@@ -91,9 +93,36 @@ export class MemStorage implements IStorage {
     this.properties.set(defaultPropertyId, defaultProperty);
   }
 
-  // User operations (IMPORTANT - mandatory for Replit Auth)
+  // User operations
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(u => u.email === email);
+  }
+
+  async createUser(userData: { email: string; password: string; firstName?: string | null; lastName?: string | null }): Promise<User> {
+    const userId = randomUUID();
+    const now = new Date();
+    const user: User = {
+      id: userId,
+      email: userData.email,
+      password: userData.password,
+      firstName: userData.firstName ?? null,
+      lastName: userData.lastName ?? null,
+      profileImageUrl: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      subscriptionStatus: null,
+      trialStartedAt: null,
+      trialEndsAt: null,
+      activePropertyCount: "0",
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.users.set(userId, user);
+    return user;
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
@@ -148,20 +177,16 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async startTrial(userId: string): Promise<User | undefined> {
+  async startTrial(userId: string, trialStart: Date, trialEnd: Date): Promise<User | undefined> {
     const user = this.users.get(userId);
     if (!user) return undefined;
     
-    const now = new Date();
-    const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + 7); // 7 days trial
-    
     const updated: User = {
       ...user,
-      trialStartedAt: now,
+      trialStartedAt: trialStart,
       trialEndsAt: trialEnd,
       subscriptionStatus: "trialing",
-      updatedAt: now,
+      updatedAt: new Date(),
     };
     this.users.set(userId, updated);
     return updated;

@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import Stripe from "stripe";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./auth";
 import { insertPropertySchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
 import { generateChatResponse } from "./gemini";
 
@@ -15,7 +15,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 // Middleware to ensure user has active subscription or is in trial
 async function ensureHostAccess(req: any, res: any, next: any) {
   try {
-    const userId = req.user?.claims?.sub;
+    const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -48,26 +48,8 @@ async function ensureHostAccess(req: any, res: any, next: any) {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware (from Replit Auth blueprint)
-  await setupAuth(app);
-
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      let user = await storage.getUser(userId);
-      
-      // If user exists and doesn't have a trial started, start it automatically
-      if (user && !user.trialStartedAt) {
-        user = await storage.startTrial(userId) || user;
-      }
-      
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
+  // Auth middleware
+  setupAuth(app);
 
   // Properties routes
   app.get("/api/properties", async (_req, res) => {
@@ -105,7 +87,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/properties", isAuthenticated, ensureHostAccess, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const validatedData = insertPropertySchema.parse(req.body);
       const property = await storage.createProperty(validatedData, userId);
       
@@ -150,7 +132,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/properties/:id", isAuthenticated, ensureHostAccess, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const deleted = await storage.deleteProperty(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Property not found" });
@@ -218,7 +200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ error: "Payment system not configured" });
       }
 
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       let user = await storage.getUser(userId);
       
       if (!user) {
@@ -289,7 +271,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get user's subscription status
   app.get('/api/subscription-status', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       if (!user) {
@@ -330,7 +312,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ error: "Payment system not configured" });
       }
 
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       if (!user?.stripeSubscriptionId) {
