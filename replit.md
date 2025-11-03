@@ -25,6 +25,24 @@ The application features a landing page showcasing the product, separate host an
 - Cancel anytime functionality
 - Subscription managed via Stripe webhook integration
 
+## Recent Changes
+
+**Authentication System (November 3, 2025):**
+- Migrated from Replit Auth to independent email/password authentication
+- Implemented passport-local strategy with scrypt password hashing (per-user salts)
+- Added secure session management with httpOnly cookies
+- Created custom Auth page with login/register forms at /auth route
+- Updated all protected routes to use req.user.id (was req.user.claims.sub)
+- Added logout button to AdminHost header
+- Removed replitAuth.ts dependencies
+- Session SECRET required: SESSION_SECRET environment variable
+
+**AI Integration (November 2025):**
+- Migrated from OpenAI to Google Gemini API for free tier access
+- Free quota: 15 requests/minute, 1500 requests/day
+- Model: "gemini-2.5-flash" (latest fast model)
+- API key from Google AI Studio (not Vertex AI)
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -49,6 +67,7 @@ Preferred communication style: Simple, everyday language.
 
 **Page Structure:**
 - **Landing page** (`/`) - Hero, features, how-it-works, testimonials, and CTA sections with pricing link
+- **Auth page** (`/auth`) - Dual login/register forms with email/password authentication
 - **Pricing page** (`/pricing`) - Three-tier pricing display with plan comparison and subscription CTAs
 - **Subscribe page** (`/subscribe`) - Stripe checkout with Payment Element supporting all payment methods
 - **Host Space** (`/host`) - Sophisticated admin interface with:
@@ -57,7 +76,8 @@ Preferred communication style: Simple, everyday language.
   - Tabbed configuration (5 tabs: Général, Check-in/out, Équipements, Règles, Infos Utiles)
   - Auto-save on field blur
   - Real-time toast notifications
-  - Authentication required (Replit Auth)
+  - Logout button in header
+  - Authentication required (passport-local)
 - **Guest Space** (`/guest/:accessKey`) - Simplified chat interface with:
   - Access via unique property link only
   - Property-specific branding
@@ -83,7 +103,7 @@ Preferred communication style: Simple, everyday language.
 
 **API Design:**
 - RESTful endpoints:
-  - Auth: GET `/api/auth/user` (protected, returns current user with subscription info)
+  - Auth: POST `/api/register`, POST `/api/login`, POST `/api/logout`, GET `/api/user` (protected)
   - Properties: GET `/api/properties`, GET `/api/properties/:id`, GET `/api/properties/by-key/:accessKey`, POST `/api/properties` (protected), PATCH `/api/properties/:id`
   - Conversations: GET `/api/conversations/property/:propertyId`, POST `/api/conversations`
   - Messages: GET `/api/messages/:conversationId`, POST `/api/messages`
@@ -91,7 +111,7 @@ Preferred communication style: Simple, everyday language.
 - WebSocket endpoint (`/ws`) for real-time chat message delivery
 - Request/response logging middleware for debugging
 - JSON-based communication with validation via Zod schemas
-- Security: accessKey-based property access for guests, Replit Auth session-based protection for host routes
+- Security: accessKey-based property access for guests, passport-local session-based authentication for host routes
 
 **Server Architecture:**
 - Modular route registration pattern
@@ -104,8 +124,8 @@ Preferred communication style: Simple, everyday language.
 
 **Database Schema (PostgreSQL):**
 - `users` table: User accounts with authentication and subscription data:
-  - **Identity**: id (text, primary key from Replit Auth), email, firstName, lastName, profileImageUrl
-  - **Subscription**: stripeCustomerId, stripeSubscriptionId, plan (free/pro/business), subscriptionStatus, trialEndsAt
+  - **Identity**: id (text, primary key), email, password (scrypt hashed), firstName, lastName, profileImageUrl
+  - **Subscription**: stripeCustomerId, stripeSubscriptionId, plan (free/pro/business), subscriptionStatus, trialStartedAt, trialEndsAt, activePropertyCount
   - **Timestamps**: createdAt, updatedAt
 - `properties` table: Comprehensive property information organized by category:
   - **System**: id (UUID), userId (foreign key to users), accessKey (unique 12-char), createdAt
