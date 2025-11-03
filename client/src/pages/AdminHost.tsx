@@ -9,14 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon } from "lucide-react";
+import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut } from "lucide-react";
 import type { Property, InsertProperty } from "@shared/schema";
 import { Link } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export default function AdminHost() {
   const { toast } = useToast();
+  const { logoutMutation } = useAuth();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [copied, setCopied] = useState(false);
   const [formData, setFormData] = useState<Partial<InsertProperty>>({});
@@ -129,11 +131,16 @@ export default function AdminHost() {
               </Button>
             </Link>
             <ThemeToggle />
-            <Link href="/">
-              <Button variant="outline" size="sm" data-testid="button-home">
-                Accueil
-              </Button>
-            </Link>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              data-testid="button-logout"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              {logoutMutation.isPending ? "..." : "Déconnexion"}
+            </Button>
           </div>
         </div>
       </header>

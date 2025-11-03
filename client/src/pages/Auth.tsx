@@ -177,26 +177,26 @@ export default function Auth() {
               {isLogin ? (
                 <>
                   Pas encore de compte?{" "}
-                  <Button
-                    variant="link"
-                    className="p-0"
+                  <button
+                    type="button"
+                    className="text-primary hover:underline font-medium"
                     onClick={() => setIsLogin(false)}
                     data-testid="button-switch-register"
                   >
                     Créer un compte
-                  </Button>
+                  </button>
                 </>
               ) : (
                 <>
                   Déjà un compte?{" "}
-                  <Button
-                    variant="link"
-                    className="p-0"
+                  <button
+                    type="button"
+                    className="text-primary hover:underline font-medium"
                     onClick={() => setIsLogin(true)}
                     data-testid="button-switch-login"
                   >
                     Se connecter
-                  </Button>
+                  </button>
                 </>
               )}
             </div>
