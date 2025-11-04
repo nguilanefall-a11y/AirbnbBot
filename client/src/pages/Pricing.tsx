@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Check, Sparkles } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { motion } from "framer-motion";
 
 export default function Pricing() {
   const [, setLocation] = useLocation();
@@ -29,21 +30,42 @@ export default function Pricing() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-12">
+        <motion.div 
+          className="text-center mb-12"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
           <h1 className="text-4xl font-bold mb-4">Tarification simple et transparente</h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Essai gratuit de 7 jours, puis payez uniquement pour ce dont vous avez besoin
           </p>
-        </div>
+        </motion.div>
 
-        <div className="max-w-2xl mx-auto">
+        <motion.div 
+          className="max-w-2xl mx-auto"
+          initial={{ opacity: 0, scale: 0.95, y: 30 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
+        >
           <Card className="border-primary shadow-lg relative">
-            <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-              <span className="bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-medium flex items-center gap-1">
-                <Sparkles className="w-4 h-4" />
+            <motion.div 
+              className="absolute -top-4 left-1/2 -translate-x-1/2"
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.4, duration: 0.5 }}
+            >
+              <span className="bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-medium flex items-center gap-1 shadow-lg">
+                <motion.div
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </motion.div>
                 Offre de lancement
               </span>
-            </div>
+            </motion.div>
             
             <CardHeader className="text-center pb-8">
               <CardTitle className="text-3xl">29,90€</CardTitle>
@@ -62,10 +84,22 @@ export default function Pricing() {
                 <h3 className="font-semibold mb-4">Tout ce dont vous avez besoin :</h3>
                 <ul className="space-y-3">
                   {features.map((feature, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <Check className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                    <motion.li 
+                      key={idx} 
+                      className="flex items-start gap-2"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.6 + idx * 0.1, duration: 0.4 }}
+                    >
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.7 + idx * 0.1, type: "spring" }}
+                      >
+                        <Check className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                      </motion.div>
                       <span>{feature}</span>
-                    </li>
+                    </motion.li>
                   ))}
                 </ul>
               </div>
@@ -94,12 +128,17 @@ export default function Pricing() {
               </p>
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
 
-        <div className="text-center mt-12 space-y-2 text-sm text-muted-foreground">
+        <motion.div 
+          className="text-center mt-12 space-y-2 text-sm text-muted-foreground"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5, duration: 0.6 }}
+        >
           <p>Tous les modes de paiement acceptés : Carte bancaire, SEPA, Apple Pay, Google Pay, et plus.</p>
           <p>Annulez à tout moment. Pas d'engagement. Pas de frais cachés.</p>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

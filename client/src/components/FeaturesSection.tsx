@@ -1,5 +1,6 @@
 import FeatureCard from "./FeatureCard";
 import { Brain, Clock, Globe, BookOpen } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function FeaturesSection() {
   const features = [
@@ -25,23 +26,60 @@ export default function FeaturesSection() {
     }
   ];
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.15
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 30, scale: 0.95 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: 0.5,
+        ease: "easeOut"
+      }
+    }
+  };
+
   return (
     <section className="py-20 bg-muted/30">
       <div className="container mx-auto px-6 lg:px-12">
-        <div className="text-center mb-16">
+        <motion.div 
+          className="text-center mb-16"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.6 }}
+        >
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
             Pourquoi Choisir Notre Assistant IA ?
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Une solution complète pour automatiser la communication avec vos voyageurs
           </p>
-        </div>
+        </motion.div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <motion.div 
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+          variants={containerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-50px" }}
+        >
           {features.map((feature, index) => (
-            <FeatureCard key={index} {...feature} />
+            <motion.div key={index} variants={itemVariants}>
+              <FeatureCard {...feature} />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
     </section>
   );

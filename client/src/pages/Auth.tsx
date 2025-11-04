@@ -9,6 +9,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, loginSchema } from "@shared/schema";
 import { z } from "zod";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -40,27 +41,65 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex">
-      <div className="flex-1 flex items-center justify-center p-8">
-        <Card className="w-full max-w-md">
-          <CardHeader className="space-y-1">
-            <div className="flex items-center gap-2 justify-center mb-4">
-              <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-                <MessageSquare className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <span className="text-2xl font-bold">Assistant Airbnb IA</span>
-            </div>
-            <CardTitle className="text-2xl text-center">
-              {isLogin ? "Connexion" : "Créer un compte"}
-            </CardTitle>
-            <CardDescription className="text-center">
-              {isLogin
-                ? "Connectez-vous à votre compte"
-                : "Commencez votre essai gratuit de 7 jours"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLogin ? (
-              <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
+      <motion.div 
+        className="flex-1 flex items-center justify-center p-8"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+      >
+        <motion.div
+          initial={{ scale: 0.95, y: 20 }}
+          animate={{ scale: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+        >
+          <Card className="w-full max-w-md shadow-xl">
+            <CardHeader className="space-y-1">
+              <motion.div 
+                className="flex items-center gap-2 justify-center mb-4"
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2, duration: 0.5 }}
+              >
+                <motion.div 
+                  className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center"
+                  whileHover={{ rotate: 360, scale: 1.1 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <MessageSquare className="w-6 h-6 text-primary-foreground" />
+                </motion.div>
+                <span className="text-2xl font-bold">Assistant Airbnb IA</span>
+              </motion.div>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={isLogin ? "login" : "register"}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <CardTitle className="text-2xl text-center">
+                    {isLogin ? "Connexion" : "Créer un compte"}
+                  </CardTitle>
+                  <CardDescription className="text-center">
+                    {isLogin
+                      ? "Connectez-vous à votre compte"
+                      : "Commencez votre essai gratuit de 7 jours"}
+                  </CardDescription>
+                </motion.div>
+              </AnimatePresence>
+            </CardHeader>
+            <CardContent>
+              <AnimatePresence mode="wait">
+                {isLogin ? (
+              <motion.form 
+                key="login-form"
+                onSubmit={loginForm.handleSubmit(onLogin)} 
+                className="space-y-4"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.3 }}
+              >
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -105,9 +144,17 @@ export default function Auth() {
                     "Se connecter"
                   )}
                 </Button>
-              </form>
+              </motion.form>
             ) : (
-              <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
+              <motion.form 
+                key="register-form"
+                onSubmit={registerForm.handleSubmit(onRegister)} 
+                className="space-y-4"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.3 }}
+              >
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">Prénom</Label>
@@ -170,10 +217,16 @@ export default function Auth() {
                     "Créer mon compte"
                   )}
                 </Button>
-              </form>
+              </motion.form>
             )}
+              </AnimatePresence>
 
-            <div className="mt-4 text-center text-sm">
+            <motion.div 
+              className="mt-4 text-center text-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+            >
               {isLogin ? (
                 <>
                   Pas encore de compte?{" "}
@@ -199,10 +252,11 @@ export default function Auth() {
                   </button>
                 </>
               )}
-            </div>
+            </motion.div>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
+      </motion.div>
 
       <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary/20 to-primary/5 p-12 items-center justify-center">
         <div className="max-w-md space-y-6">

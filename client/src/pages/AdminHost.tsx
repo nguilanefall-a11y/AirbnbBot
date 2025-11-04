@@ -15,6 +15,7 @@ import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut } fro
 import type { Property, InsertProperty } from "@shared/schema";
 import { Link } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function AdminHost() {
   const { toast } = useToast();
@@ -115,15 +116,30 @@ export default function AdminHost() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
+      <motion.header 
+        className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur"
+        initial={{ y: -64, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+      >
         <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <motion.div 
+            className="flex items-center gap-2"
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.4 }}
+          >
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Home className="w-5 h-5 text-primary-foreground" />
             </div>
             <span className="text-xl font-bold">Espace Hôte</span>
-          </div>
-          <div className="flex items-center gap-3">
+          </motion.div>
+          <motion.div 
+            className="flex items-center gap-3"
+            initial={{ x: 20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.4 }}
+          >
             <Link href="/chat">
               <Button variant="ghost" size="sm" data-testid="button-chat">
                 <MessageSquare className="w-4 h-4 mr-2" />
@@ -141,67 +157,97 @@ export default function AdminHost() {
               <LogOut className="w-4 h-4 mr-2" />
               {logoutMutation.isPending ? "..." : "Déconnexion"}
             </Button>
-          </div>
+          </motion.div>
         </div>
-      </header>
+      </motion.header>
 
       <main className="container mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-1">
+          <motion.div 
+            className="lg:col-span-1"
+            initial={{ x: -30, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.3, duration: 0.5 }}
+          >
             <Card className="p-6">
               <h2 className="text-xl font-semibold mb-4">Vos Propriétés</h2>
               <div className="space-y-2">
-                {properties?.map((property) => (
-                  <button
+                {properties?.map((property, index) => (
+                  <motion.button
                     key={property.id}
                     onClick={() => setSelectedProperty(property)}
                     className={`w-full text-left p-3 rounded-lg hover-elevate transition-all ${
                       selectedProperty?.id === property.id ? "bg-primary text-primary-foreground" : ""
                     }`}
                     data-testid={`button-property-${property.id}`}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.4 + index * 0.1, duration: 0.3 }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                   >
                     <div className="font-medium">{property.name}</div>
                     <div className="text-sm opacity-75">{property.address}</div>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
             </Card>
 
-            {selectedProperty && (
-              <Card className="p-6 mt-6">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <LinkIcon className="w-4 h-4" />
-                  Lien Voyageur
-                </h3>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Partagez ce lien avec vos voyageurs pour qu'ils puissent poser des questions
-                </p>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={copyGuestLink}
-                  data-testid="button-copy-link"
+            <AnimatePresence mode="wait">
+              {selectedProperty && (
+                <motion.div
+                  key={selectedProperty.id}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                  transition={{ duration: 0.3 }}
                 >
-                  {copied ? (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 mr-2" />
-                      Copié!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copier le lien
-                    </>
-                  )}
-                </Button>
-                <div className="mt-2 p-2 bg-muted rounded text-xs font-mono break-all">
-                  {window.location.origin}/guest/{selectedProperty.accessKey}
-                </div>
-              </Card>
-            )}
-          </div>
+                  <Card className="p-6 mt-6">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <LinkIcon className="w-4 h-4" />
+                      Lien Voyageur
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Partagez ce lien avec vos voyageurs pour qu'ils puissent poser des questions
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={copyGuestLink}
+                      data-testid="button-copy-link"
+                    >
+                      {copied ? (
+                        <motion.div
+                          className="flex items-center"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ type: "spring", stiffness: 300 }}
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          Copié!
+                        </motion.div>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copier le lien
+                        </>
+                      )}
+                    </Button>
+                    <div className="mt-2 p-2 bg-muted rounded text-xs font-mono break-all">
+                      {window.location.origin}/guest/{selectedProperty.accessKey}
+                    </div>
+                  </Card>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
 
-          <div className="lg:col-span-3">
+          <motion.div 
+            className="lg:col-span-3"
+            initial={{ x: 30, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.4, duration: 0.5 }}
+          >
             {selectedProperty ? (
               <Tabs defaultValue="general" className="w-full">
                 <TabsList className="grid w-full grid-cols-5">
@@ -698,7 +744,7 @@ export default function AdminHost() {
                 </div>
               </Card>
             )}
-          </div>
+          </motion.div>
         </div>
       </main>
     </div>
