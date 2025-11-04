@@ -2,69 +2,135 @@ import { Button } from "@/components/ui/button";
 import { MessageSquare, Sparkles } from "lucide-react";
 import heroImage from "@assets/generated_images/Airbnb_hero_background_image_5f8c9168.png";
 import { Link } from "wouter";
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
 
 export default function LandingHero() {
+  const ref = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end start"]
+  });
+
+  const y = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
+  const opacity = useTransform(scrollYProgress, [0, 1], [1, 0]);
+
   return (
-    <div className="relative min-h-[80vh] flex items-center overflow-hidden">
-      <div className="absolute inset-0 z-0">
+    <div ref={ref} className="relative min-h-[80vh] flex items-center overflow-hidden">
+      <motion.div 
+        className="absolute inset-0 z-0"
+        style={{ y }}
+      >
         <div 
-          className="absolute inset-0 bg-cover bg-center"
+          className="absolute inset-0 bg-cover bg-center scale-110"
           style={{ backgroundImage: `url(${heroImage})` }}
         />
         <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30" />
-      </div>
+      </motion.div>
       
-      <div className="container mx-auto px-6 lg:px-12 relative z-10">
+      <motion.div 
+        className="container mx-auto px-6 lg:px-12 relative z-10"
+        style={{ opacity }}
+      >
         <div className="max-w-3xl">
-          <div className="flex items-center gap-2 mb-6">
-            <Sparkles className="w-6 h-6 text-primary" />
+          <motion.div 
+            className="flex items-center gap-2 mb-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <motion.div
+              animate={{ 
+                rotate: [0, 10, -10, 0],
+                scale: [1, 1.1, 1]
+              }}
+              transition={{ 
+                duration: 2, 
+                repeat: Infinity,
+                repeatType: "reverse"
+              }}
+            >
+              <Sparkles className="w-6 h-6 text-primary" />
+            </motion.div>
             <span className="text-white/90 font-medium">Propulsé par l'IA</span>
-          </div>
+          </motion.div>
           
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
+          <motion.h1 
+            className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+          >
             Votre Assistant Airbnb Intelligent 24/7
-          </h1>
+          </motion.h1>
           
-          <p className="text-lg md:text-xl text-white/90 mb-8 leading-relaxed">
+          <motion.p 
+            className="text-lg md:text-xl text-white/90 mb-8 leading-relaxed"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
+          >
             Automatisez les réponses aux questions de vos voyageurs grâce à l'intelligence artificielle. 
             Gagnez du temps et offrez une expérience exceptionnelle à vos invités.
-          </p>
+          </motion.p>
           
-          <div className="flex flex-wrap gap-4">
+          <motion.div 
+            className="flex flex-wrap gap-4"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.6 }}
+          >
             <Link href="/chat">
-              <Button 
-                size="lg" 
-                className="rounded-full px-8 text-base font-semibold"
-                data-testid="button-start-free"
-              >
-                <MessageSquare className="w-5 h-5 mr-2" />
-                Commencer Gratuitement
-              </Button>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button 
+                  size="lg" 
+                  className="rounded-full px-8 text-base font-semibold shadow-lg hover:shadow-xl transition-shadow"
+                  data-testid="button-start-free"
+                >
+                  <MessageSquare className="w-5 h-5 mr-2" />
+                  Commencer Gratuitement
+                </Button>
+              </motion.div>
             </Link>
             <Link href="/host">
-              <Button 
-                size="lg" 
-                variant="outline" 
-                className="rounded-full px-8 text-base font-semibold bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20"
-                data-testid="button-demo"
-              >
-                Espace Hôte
-              </Button>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button 
+                  size="lg" 
+                  variant="outline" 
+                  className="rounded-full px-8 text-base font-semibold bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20"
+                  data-testid="button-demo"
+                >
+                  Espace Hôte
+                </Button>
+              </motion.div>
             </Link>
-          </div>
+          </motion.div>
           
-          <div className="mt-8 flex items-center gap-6 text-white/80 text-sm">
+          <motion.div 
+            className="mt-8 flex items-center gap-6 text-white/80 text-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.8 }}
+          >
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-primary rounded-full" />
+              <motion.div 
+                className="w-2 h-2 bg-primary rounded-full"
+                animate={{ scale: [1, 1.3, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
               <span>Configuration en 5 minutes</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-primary rounded-full" />
+              <motion.div 
+                className="w-2 h-2 bg-primary rounded-full"
+                animate={{ scale: [1, 1.3, 1] }}
+                transition={{ duration: 2, repeat: Infinity, delay: 1 }}
+              />
               <span>Sans engagement</span>
             </div>
-          </div>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -16,6 +16,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { useToast } from "@/hooks/use-toast";
 import { chatWebSocket } from "@/lib/websocket";
 import heroImage from "@assets/stock_images/beautiful_welcoming__f0be1f33.jpg";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Guest() {
   const { toast } = useToast();
@@ -197,18 +198,49 @@ export default function Guest() {
       <div className="container mx-auto p-4 h-[calc(100vh-4rem)]">
         {!selectedConversation ? (
           <div className="h-full flex items-center justify-center relative z-10">
-            <Card className="p-8 max-w-md w-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-white/20">
-              <div className="text-center mb-6">
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                  <Sparkles className="w-10 h-10 text-white" />
-                </div>
-                <h2 className="text-3xl font-bold mb-3 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-                  Bienvenue chez vous !
-                </h2>
-                <p className="text-muted-foreground text-base leading-relaxed">
-                  Je suis votre assistant personnel pour {property.name}. Je suis là pour répondre à toutes vos questions et rendre votre séjour inoubliable.
-                </p>
-              </div>
+            <motion.div
+              initial={{ opacity: 0, y: 30, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+            >
+              <Card className="p-8 max-w-md w-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-white/20 shadow-2xl">
+                <motion.div 
+                  className="text-center mb-6"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2, duration: 0.5 }}
+                >
+                  <motion.div 
+                    className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center mx-auto mb-4 shadow-lg"
+                    animate={{ 
+                      rotate: [0, 5, -5, 0],
+                      scale: [1, 1.05, 1]
+                    }}
+                    transition={{ 
+                      duration: 3,
+                      repeat: Infinity,
+                      repeatType: "reverse"
+                    }}
+                  >
+                    <Sparkles className="w-10 h-10 text-white" />
+                  </motion.div>
+                  <motion.h2 
+                    className="text-3xl font-bold mb-3 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3, duration: 0.5 }}
+                  >
+                    Bienvenue chez vous !
+                  </motion.h2>
+                  <motion.p 
+                    className="text-muted-foreground text-base leading-relaxed"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.4, duration: 0.5 }}
+                  >
+                    Je suis votre assistant personnel pour {property.name}. Je suis là pour répondre à toutes vos questions et rendre votre séjour inoubliable.
+                  </motion.p>
+                </motion.div>
 
               {conversations && conversations.length > 0 ? (
                 <div className="space-y-3">
@@ -279,6 +311,7 @@ export default function Guest() {
                 </DialogContent>
               </Dialog>
             </Card>
+            </motion.div>
           </div>
         ) : (
           <Card className="h-full flex flex-col">
@@ -309,37 +342,70 @@ export default function Guest() {
             </div>
 
             <div className="flex-1 p-4 overflow-y-auto">
-              {messages?.map((msg) => (
-                <div key={msg.id} className={cn("flex gap-3 mb-4", msg.isBot ? "justify-start" : "justify-end")}>
-                  {msg.isBot && (
-                    <Avatar className="w-8 h-8">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        <Bot className="w-4 h-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                  <div className={cn(
-                    "max-w-[70%] rounded-2xl px-4 py-2",
-                    msg.isBot ? "bg-muted" : "bg-primary text-primary-foreground"
-                  )}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    <span className={cn("text-xs opacity-70 mt-1 block", msg.isBot ? "text-muted-foreground" : "text-primary-foreground/70")}>
-                      {new Date(msg.createdAt).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  {!msg.isBot && (
-                    <Avatar className="w-8 h-8">
-                      <AvatarFallback className="bg-accent">
-                        <User className="w-4 h-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                </div>
-              ))}
+              <AnimatePresence mode="popLayout">
+                {messages?.map((msg, index) => (
+                  <motion.div 
+                    key={msg.id} 
+                    className={cn("flex gap-3 mb-4", msg.isBot ? "justify-start" : "justify-end")}
+                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ 
+                      duration: 0.3,
+                      delay: index * 0.05,
+                      ease: "easeOut"
+                    }}
+                  >
+                    {msg.isBot && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+                      >
+                        <Avatar className="w-8 h-8">
+                          <AvatarFallback className="bg-primary text-primary-foreground">
+                            <Bot className="w-4 h-4" />
+                          </AvatarFallback>
+                        </Avatar>
+                      </motion.div>
+                    )}
+                    <motion.div 
+                      className={cn(
+                        "max-w-[70%] rounded-2xl px-4 py-2 shadow-sm",
+                        msg.isBot ? "bg-muted" : "bg-primary text-primary-foreground"
+                      )}
+                      whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
+                    >
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      <span className={cn("text-xs opacity-70 mt-1 block", msg.isBot ? "text-muted-foreground" : "text-primary-foreground/70")}>
+                        {new Date(msg.createdAt).toLocaleTimeString()}
+                      </span>
+                    </motion.div>
+                    {!msg.isBot && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+                      >
+                        <Avatar className="w-8 h-8">
+                          <AvatarFallback className="bg-accent">
+                            <User className="w-4 h-4" />
+                          </AvatarFallback>
+                        </Avatar>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-4 border-t">
+            <motion.div 
+              className="p-4 border-t"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+            >
               <div className="flex gap-2">
                 <Input
                   placeholder="Tapez votre question..."
@@ -347,16 +413,31 @@ export default function Guest() {
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                   data-testid="input-message"
+                  className="transition-all duration-200 focus:scale-[1.01]"
                 />
-                <Button
-                  size="icon"
-                  onClick={handleSend}
-                  data-testid="button-send"
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
                 >
-                  <Send className="w-4 h-4" />
-                </Button>
+                  <Button
+                    size="icon"
+                    onClick={handleSend}
+                    data-testid="button-send"
+                    className="relative overflow-hidden"
+                  >
+                    <motion.div
+                      animate={message.trim() ? {
+                        scale: [1, 1.2, 1],
+                        rotate: [0, -10, 10, 0]
+                      } : {}}
+                      transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+                    >
+                      <Send className="w-4 h-4" />
+                    </motion.div>
+                  </Button>
+                </motion.div>
               </div>
-            </div>
+            </motion.div>
           </Card>
         )}
       </div>
