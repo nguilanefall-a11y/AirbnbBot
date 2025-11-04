@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut } from "lucide-react";
+import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Plus, Sparkles, Loader2, ExternalLink } from "lucide-react";
 import type { Property, InsertProperty } from "@shared/schema";
 import { Link } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -19,14 +21,32 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function AdminHost() {
   const { toast } = useToast();
-  const { logoutMutation } = useAuth();
+  const [, setLocation] = useLocation();
+  const { logoutMutation, user, isLoading: authLoading } = useAuth();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [copied, setCopied] = useState(false);
   const [formData, setFormData] = useState<Partial<InsertProperty>>({});
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [airbnbUrl, setAirbnbUrl] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
 
   const { data: properties, isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      toast({
+        title: "Connexion requise",
+        description: "Vous devez être connecté pour accéder à cette page",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        setLocation("/auth");
+      }, 1000);
+    }
+  }, [user, authLoading, toast, setLocation]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<InsertProperty> }) => {
@@ -41,6 +61,85 @@ export default function AdminHost() {
       });
     },
   });
+
+  const importAirbnbMutation = useMutation({
+    mutationFn: async (url: string) => {
+      // Check if user is authenticated before making request
+      if (!user) {
+        throw new Error("Vous devez être connecté pour importer une propriété");
+      }
+      
+      setIsImporting(true);
+      const res = await apiRequest("POST", "/api/properties/import-airbnb", { airbnbUrl: url });
+      return await res.json();
+    },
+    onSuccess: (property) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      setSelectedProperty(property);
+      setShowImportDialog(false);
+      setAirbnbUrl("");
+      setIsImporting(false);
+      toast({
+        title: "Propriété importée !",
+        description: "Les informations ont été extraites depuis Airbnb. Vous pouvez les modifier si nécessaire.",
+      });
+    },
+    onError: (error: any) => {
+      setIsImporting(false);
+      
+      // Extract error message from response
+      let errorMessage = "Impossible d'importer la propriété";
+      if (error.message) {
+        errorMessage = error.message;
+        // Try to parse JSON error if it's a stringified JSON
+        try {
+          const parsed = JSON.parse(error.message.split(':')[1] || '{}');
+          if (parsed.error) errorMessage = parsed.error;
+          if (parsed.message) errorMessage = parsed.message;
+        } catch (e) {
+          // Not JSON, use as is
+          // Check if it's an authentication error
+          if (error.message.includes("401") || error.message.includes("Non authentifié") || error.message.includes("connecté")) {
+            errorMessage = "Vous devez être connecté pour utiliser cette fonctionnalité";
+            setTimeout(() => {
+              setLocation("/auth");
+            }, 2000);
+          }
+        }
+      }
+      
+      // Check if it's a 401 error
+      if (error.status === 401 || errorMessage.includes("connecté") || errorMessage.includes("authentifié")) {
+        toast({
+          title: "Connexion requise",
+          description: "Vous devez être connecté pour importer une propriété. Redirection vers la page de connexion...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          setLocation("/auth");
+        }, 2000);
+        return;
+      }
+      
+      toast({
+        title: "Erreur d'import",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleImportAirbnb = () => {
+    if (!airbnbUrl.trim()) {
+      toast({
+        title: "URL requise",
+        description: "Veuillez entrer un lien Airbnb",
+        variant: "destructive",
+      });
+      return;
+    }
+    importAirbnbMutation.mutate(airbnbUrl.trim());
+  };
 
   useEffect(() => {
     if (properties && properties.length > 0 && !selectedProperty) {
@@ -110,8 +209,20 @@ export default function AdminHost() {
     });
   };
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return <div className="flex items-center justify-center min-h-screen">Chargement...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Connexion requise</h2>
+          <p className="text-muted-foreground mb-4">Vous devez être connecté pour accéder à cette page</p>
+          <Button onClick={() => setLocation("/auth")}>Aller à la page de connexion</Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -170,7 +281,60 @@ export default function AdminHost() {
             transition={{ delay: 0.3, duration: 0.5 }}
           >
             <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4">Vos Propriétés</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Vos Propriétés</h2>
+                <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      Importer
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Sparkles className="w-5 h-5" />
+                        Importer depuis Airbnb
+                      </DialogTitle>
+                      <DialogDescription>
+                        Collez le lien de votre annonce Airbnb et l'IA extraira automatiquement toutes les informations
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <Label htmlFor="airbnb-url">Lien Airbnb</Label>
+                        <Input
+                          id="airbnb-url"
+                          placeholder="https://www.airbnb.com/rooms/..."
+                          value={airbnbUrl}
+                          onChange={(e) => setAirbnbUrl(e.target.value)}
+                          disabled={isImporting}
+                        />
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Exemple: https://www.airbnb.com/rooms/12345678
+                        </p>
+                      </div>
+                      <Button
+                        onClick={handleImportAirbnb}
+                        disabled={isImporting || !airbnbUrl.trim()}
+                        className="w-full"
+                      >
+                        {isImporting ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Analyse en cours...
+                          </>
+                        ) : (
+                          <>
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Importer la propriété
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
               <div className="space-y-2">
                 {properties?.map((property, index) => (
                   <motion.button

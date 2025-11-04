@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
 import { insertPropertySchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
 import { generateChatResponse } from "./gemini";
+import { analyzeAirbnbListing } from "./airbnb-scraper";
 
 // Initialize Stripe (optional - only needed for subscription features)
 const stripe = process.env.STRIPE_SECRET_KEY 
@@ -82,6 +83,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(property);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch property" });
+    }
+  });
+
+  // Import property from Airbnb URL
+  app.post("/api/properties/import-airbnb", isAuthenticated, async (req: any, res) => {
+    // Allow import for all authenticated users (bypass subscription check for now)
+    // You can add ensureHostAccess back if needed
+    try {
+      const userId = req.user.id;
+      const { airbnbUrl } = req.body;
+
+      if (!airbnbUrl || typeof airbnbUrl !== 'string') {
+        return res.status(400).json({ error: "URL Airbnb requise" });
+      }
+
+      // Validate Airbnb URL format
+      if (!airbnbUrl.includes('airbnb.com') && !airbnbUrl.includes('airbnb.fr')) {
+        return res.status(400).json({ error: "URL Airbnb invalide" });
+      }
+
+      // Analyze the Airbnb listing with AI
+      const propertyData = await analyzeAirbnbListing(airbnbUrl);
+      
+      // Get user info for host name default
+      const user = await storage.getUser(userId);
+      if (user && !propertyData.hostName) {
+        propertyData.hostName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Hôte';
+      }
+
+      // Create the property
+      const validatedData = insertPropertySchema.parse(propertyData);
+      const property = await storage.createProperty(validatedData, userId);
+      
+      // Update property count for subscription
+      const userProperties = await storage.getPropertiesByUser(userId);
+      const newCount = userProperties.length;
+      await storage.updatePropertyCount(userId, newCount);
+      
+      // Update Stripe subscription quantity if user has an active subscription
+      if (user?.stripeSubscriptionId && stripe) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+          if (subscription.items.data.length > 0) {
+            await stripe.subscriptions.update(user.stripeSubscriptionId, {
+              items: [{ id: subscription.items.data[0].id, quantity: newCount }],
+            });
+          }
+        } catch (stripeError) {
+          console.error("Error updating Stripe quantity:", stripeError);
+        }
+      }
+      
+      res.status(201).json(property);
+    } catch (error: any) {
+      console.error("Error importing from Airbnb:", error);
+      
+      // Provide more specific error messages
+      if (error.message && error.message.includes("Non authentifié")) {
+        return res.status(401).json({ 
+          error: "Vous devez être connecté pour importer une propriété",
+          message: "Veuillez vous connecter avant d'importer une propriété Airbnb"
+        });
+      }
+      
+      res.status(400).json({ 
+        error: error.message || "Impossible d'importer la propriété depuis Airbnb" 
+      });
     }
   });
 

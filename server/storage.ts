@@ -336,4 +336,26 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Use database storage if DATABASE_URL is configured, otherwise use in-memory storage
+let storage: IStorage;
+
+// Initialize storage based on DATABASE_URL
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== "") {
+  try {
+    // Dynamic import to avoid errors if database module fails
+    const { DatabaseStorage } = require("./db-storage");
+    storage = new DatabaseStorage();
+    console.log("✅ Using PostgreSQL database storage (data will persist)");
+  } catch (error: any) {
+    console.warn("⚠️  Failed to initialize database storage, falling back to in-memory storage:", error.message);
+    storage = new MemStorage();
+    console.warn("⚠️  WARNING: Data will be lost when server restarts!");
+  }
+} else {
+  console.warn("⚠️  DATABASE_URL not configured, using in-memory storage");
+  console.warn("⚠️  WARNING: Data will be lost when server restarts!");
+  console.warn("⚠️  To enable persistent storage, add DATABASE_URL to your .env file");
+  storage = new MemStorage();
+}
+
+export { storage };

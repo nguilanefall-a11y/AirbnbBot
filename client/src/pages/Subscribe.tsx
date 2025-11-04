@@ -8,11 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 
-// Initialize Stripe
-if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
-  throw new Error('Missing required Stripe key: VITE_STRIPE_PUBLIC_KEY');
-}
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+// Initialize Stripe (optional - only needed for subscription features)
+const stripePromise = import.meta.env.VITE_STRIPE_PUBLIC_KEY 
+  ? loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY)
+  : null;
 
 function CheckoutForm({ plan }: { plan: string }) {
   const stripe = useStripe();
@@ -142,6 +141,21 @@ export default function Subscribe() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full" aria-label="Chargement"/>
+      </div>
+    );
+  }
+
+  if (!stripePromise) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg">
+          <CardHeader>
+            <CardTitle>Stripe non configuré</CardTitle>
+            <CardDescription>
+              La clé Stripe n'est pas configurée. Cette fonctionnalité nécessite VITE_STRIPE_PUBLIC_KEY dans le fichier .env
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
     );
   }

@@ -13,8 +13,10 @@ export class ChatWebSocket {
   connect() {
     if (this.ws && this.isConnected) return;
 
+    // Use explicit host if available, otherwise fallback to localhost:5000
+    const host = window.location.host || 'localhost:5000';
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const wsUrl = `${protocol}//${host}/ws`;
 
     this.ws = new WebSocket(wsUrl);
 

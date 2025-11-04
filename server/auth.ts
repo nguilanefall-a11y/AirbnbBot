@@ -144,7 +144,10 @@ export function setupAuth(app: Express) {
 
 export const isAuthenticated = (req: any, res: any, next: any) => {
   if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "Non authentifié" });
+    return res.status(401).json({ 
+      message: "Non authentifié",
+      error: "Vous devez être connecté pour accéder à cette ressource"
+    });
   }
   next();
 };
