@@ -3,11 +3,13 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Check, Sparkles } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { motion } from "framer-motion";
 
 export default function Pricing() {
   const [, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
+  const { t, language } = useLanguage();
 
   const handleStartTrial = () => {
     if (isAuthenticated) {
@@ -18,14 +20,31 @@ export default function Pricing() {
   };
 
   const features = [
-    "Propriétés illimitées",
-    "Conversations illimitées avec l'IA",
-    "Assistant IA Gemini",
-    "Support par email",
-    "Gestion complète de vos informations",
-    "Liens d'accès uniques pour vos voyageurs",
-    "Interface moderne et intuitive",
+    t.pricingPage.features.unlimitedProperties,
+    t.pricingPage.features.unlimitedConversations,
+    t.pricingPage.features.aiAssistant,
+    t.pricingPage.features.emailSupport,
+    t.pricingPage.features.fullManagement,
+    t.pricingPage.features.uniqueLinks,
+    t.pricingPage.features.modernInterface,
   ];
+
+  // Calculate example prices
+  const firstPropertyPrice = 19.90;
+  const additionalPropertyPrice = 14.90;
+  const calculatePrice = (numProperties: number) => {
+    if (numProperties === 0) return 0;
+    return firstPropertyPrice + (additionalPropertyPrice * (numProperties - 1));
+  };
+  
+  // Format price according to current language
+  const formatPrice = (amount: number) => {
+    // Use French format (19,90€) or English format (€19.90) based on language
+    const formatted = language === 'fr' || language === 'es' || language === 'it'
+      ? `${amount.toFixed(2).replace('.', ',')}€`
+      : `€${amount.toFixed(2)}`;
+    return formatted;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -36,9 +55,9 @@ export default function Pricing() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
-          <h1 className="text-4xl font-bold mb-4">Tarification simple et transparente</h1>
+          <h1 className="text-4xl font-bold mb-4">{t.pricingPage.title}</h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Essai gratuit de 7 jours, puis payez uniquement pour ce dont vous avez besoin
+            {t.pricingPage.subtitle}
           </p>
         </motion.div>
 
@@ -47,9 +66,8 @@ export default function Pricing() {
           initial={{ opacity: 0, scale: 0.95, y: 30 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
         >
-          <Card className="border-primary shadow-lg relative">
+          <Card className="border-primary shadow-lg relative hover-elevate">
             <motion.div 
               className="absolute -top-4 left-1/2 -translate-x-1/2"
               initial={{ y: -20, opacity: 0 }}
@@ -63,25 +81,38 @@ export default function Pricing() {
                 >
                   <Sparkles className="w-4 h-4" />
                 </motion.div>
-                Offre de lancement
+                {t.pricingPage.launchOffer}
               </span>
             </motion.div>
             
             <CardHeader className="text-center pb-8">
-              <CardTitle className="text-3xl">29,90€</CardTitle>
-              <CardDescription className="text-lg">par propriété / mois</CardDescription>
+              <div className="space-y-4">
+                <div>
+                  <CardTitle className="text-2xl">{t.pricingPage.firstProperty}</CardTitle>
+                  <CardDescription className="text-3xl font-bold text-foreground mt-2">
+                    {formatPrice(firstPropertyPrice)} <span className="text-base font-normal text-muted-foreground">{t.pricingPage.perMonth}</span>
+                  </CardDescription>
+                </div>
+                <div className="text-sm text-muted-foreground">+</div>
+                <div>
+                  <CardTitle className="text-xl">{t.pricingPage.additionalProperty}</CardTitle>
+                  <CardDescription className="text-2xl font-bold text-foreground mt-2">
+                    {formatPrice(additionalPropertyPrice)} <span className="text-base font-normal text-muted-foreground">{t.pricingPage.perMonth}</span>
+                  </CardDescription>
+                </div>
+              </div>
               
               <div className="mt-6 p-4 bg-primary/10 rounded-lg">
-                <p className="text-sm font-medium">🎉 Essai gratuit de 7 jours</p>
+                <p className="text-sm font-medium">{t.pricingPage.trialBanner}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Aucune carte bancaire requise pour commencer
+                  {t.pricingPage.trialDescription}
                 </p>
               </div>
             </CardHeader>
             
             <CardContent className="space-y-6">
               <div>
-                <h3 className="font-semibold mb-4">Tout ce dont vous avez besoin :</h3>
+                <h3 className="font-semibold mb-4">{t.pricingPage.allFeatures}</h3>
                 <ul className="space-y-3">
                   {features.map((feature, idx) => (
                     <motion.li 
@@ -105,12 +136,24 @@ export default function Pricing() {
               </div>
 
               <div className="pt-4 border-t">
-                <h4 className="font-semibold mb-2">Comment ça marche ?</h4>
+                <h4 className="font-semibold mb-2">{t.pricingPage.howItWorks.title}</h4>
                 <div className="space-y-2 text-sm text-muted-foreground">
-                  <p>✓ Créez votre compte et profitez de 7 jours gratuits</p>
-                  <p>✓ Ajoutez autant de propriétés que vous le souhaitez</p>
-                  <p>✓ Payez uniquement 29,90€ par propriété après l'essai</p>
-                  <p>✓ Annulez à tout moment, sans engagement</p>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                    <span>{t.pricingPage.howItWorks.step1}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                    <span>{t.pricingPage.howItWorks.step2}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                    <span>{t.pricingPage.howItWorks.step3firstPart} <strong>{t.pricingPage.howItWorks.step3price}</strong>, {t.pricingPage.howItWorks.step3additional}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                    <span>{t.pricingPage.howItWorks.step4}</span>
+                  </div>
                 </div>
               </div>
 
@@ -120,12 +163,14 @@ export default function Pricing() {
                 onClick={handleStartTrial}
                 data-testid="button-start-trial"
               >
-                Commencer l'essai gratuit
+                {t.pricingPage.cta}
               </Button>
 
-              <p className="text-center text-sm text-muted-foreground">
-                Exemple : 3 propriétés = 89,70€/mois
-              </p>
+              <div className="text-center text-sm text-muted-foreground space-y-1">
+                <p>{t.pricingPage.examplePrefix} 1 {t.pricingPage.exampleProperty} = {formatPrice(calculatePrice(1))}{t.pricingPage.exampleSuffix}</p>
+                <p>{t.pricingPage.examplePrefix} 2 {t.pricingPage.exampleProperties} = {formatPrice(calculatePrice(2))}{t.pricingPage.exampleSuffix}</p>
+                <p>{t.pricingPage.examplePrefix} 3 {t.pricingPage.exampleProperties} = {formatPrice(calculatePrice(3))}{t.pricingPage.exampleSuffix}</p>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
@@ -136,8 +181,8 @@ export default function Pricing() {
           animate={{ opacity: 1 }}
           transition={{ delay: 1.5, duration: 0.6 }}
         >
-          <p>Tous les modes de paiement acceptés : Carte bancaire, SEPA, Apple Pay, Google Pay, et plus.</p>
-          <p>Annulez à tout moment. Pas d'engagement. Pas de frais cachés.</p>
+          <p>{t.pricingPage.paymentMethods}</p>
+          <p>{t.pricingPage.noCommitment}</p>
         </motion.div>
       </div>
     </div>

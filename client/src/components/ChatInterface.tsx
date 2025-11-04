@@ -70,54 +70,32 @@ export default function ChatInterface() {
 
   return (
     <Card className="flex flex-col h-[600px] overflow-hidden">
-      <div className="p-4 border-b flex items-center justify-between bg-gradient-to-r from-primary/5 to-primary/10">
+      <div className="p-4 border-b flex items-center justify-between">
         <div>
-          <h3 className="font-semibold text-lg">Assistant Airbnb IA</h3>
+          <h3 className="font-semibold">Assistant Airbnb</h3>
           <div className="flex items-center gap-2 mt-1">
             <Badge variant="secondary" className="gap-1">
-              <Sparkles className="w-3 h-3 animate-pulse" />
+              <Sparkles className="w-3 h-3" />
               IA Active
             </Badge>
-            {isLoading && (
-              <Badge variant="outline" className="gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Réflexion...
-              </Badge>
-            )}
           </div>
         </div>
       </div>
       
-      <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-muted/30">
-        {messages.length === 1 && (
-          <div className="text-center py-8 text-muted-foreground">
-            <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Posez votre première question pour commencer</p>
-          </div>
-        )}
+      <div className="flex-1 p-4 overflow-y-auto">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} {...msg} />
         ))}
-        {isLoading && messages.length > 1 && (
-          <div className="flex items-start gap-2 p-3 bg-muted rounded-lg">
-            <Loader2 className="w-4 h-4 animate-spin mt-1 text-muted-foreground" />
-            <div className="flex gap-1">
-              <span className="animate-pulse">●</span>
-              <span className="animate-pulse delay-75">●</span>
-              <span className="animate-pulse delay-150">●</span>
-            </div>
-          </div>
-        )}
       </div>
       
-      <div className="p-4 border-t space-y-3 bg-background">
+      <div className="p-4 border-t space-y-3">
         <div className="flex flex-wrap gap-2">
           {quickReplies.map((reply) => (
             <Button
               key={reply}
               variant="outline"
               size="sm"
-              className="text-xs hover:bg-primary hover:text-primary-foreground transition-colors"
+              className="text-xs"
               onClick={() => {
                 setMessage(reply);
                 setTimeout(() => handleSend(), 100);
@@ -135,17 +113,14 @@ export default function ChatInterface() {
             placeholder="Tapez votre message..."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSend()}
-            disabled={isLoading}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
             data-testid="input-chat-message"
-            className="flex-1"
           />
           <Button 
             size="icon"
             onClick={handleSend}
             disabled={isLoading || !message.trim()}
             data-testid="button-send-message"
-            className="shrink-0"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>

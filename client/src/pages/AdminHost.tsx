@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,40 +11,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Plus, Sparkles, Loader2, ExternalLink } from "lucide-react";
-import type { Property, InsertProperty } from "@shared/schema";
+import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Download, Sparkles, DollarSign, MapPin, User as UserIcon, Clock, Wifi, Shield, Info, Utensils, Thermometer } from "lucide-react";
+import type { Property, InsertProperty, User } from "@shared/schema";
 import { Link } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export default function AdminHost() {
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
-  const { logoutMutation, user, isLoading: authLoading } = useAuth();
+  const { logoutMutation } = useAuth();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [copied, setCopied] = useState(false);
   const [formData, setFormData] = useState<Partial<InsertProperty>>({});
-  const [showImportDialog, setShowImportDialog] = useState(false);
   const [airbnbUrl, setAirbnbUrl] = useState("");
-  const [isImporting, setIsImporting] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+
+  const { data: currentUser } = useQuery<User>({
+    queryKey: ["/api/user"],
+  });
 
   const { data: properties, isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      toast({
-        title: "Connexion requise",
-        description: "Vous devez être connecté pour accéder à cette page",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        setLocation("/auth");
-      }, 1000);
-    }
-  }, [user, authLoading, toast, setLocation]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<InsertProperty> }) => {
@@ -64,62 +52,31 @@ export default function AdminHost() {
 
   const importAirbnbMutation = useMutation({
     mutationFn: async (url: string) => {
-      // Check if user is authenticated before making request
-      if (!user) {
-        throw new Error("Vous devez être connecté pour importer une propriété");
-      }
-      
-      setIsImporting(true);
-      const res = await apiRequest("POST", "/api/properties/import-airbnb", { airbnbUrl: url });
+      const res = await apiRequest("POST", "/api/import-airbnb", { url });
       return await res.json();
     },
-    onSuccess: (property) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      setSelectedProperty(property);
-      setShowImportDialog(false);
+    onSuccess: (data) => {
+      // Auto-fill form with imported data
+      if (selectedProperty) {
+        setFormData(prev => ({ ...prev, ...data }));
+        
+        // Auto-save all imported fields
+        updateMutation.mutate({
+          id: selectedProperty.id,
+          updates: data
+        });
+      }
+      
+      setIsImportDialogOpen(false);
       setAirbnbUrl("");
-      setIsImporting(false);
       toast({
-        title: "Propriété importée !",
-        description: "Les informations ont été extraites depuis Airbnb. Vous pouvez les modifier si nécessaire.",
+        title: "Import réussi !",
+        description: "Les informations ont été importées et sauvegardées automatiquement",
       });
     },
     onError: (error: any) => {
-      setIsImporting(false);
-      
-      // Extract error message from response
-      let errorMessage = "Impossible d'importer la propriété";
-      if (error.message) {
-        errorMessage = error.message;
-        // Try to parse JSON error if it's a stringified JSON
-        try {
-          const parsed = JSON.parse(error.message.split(':')[1] || '{}');
-          if (parsed.error) errorMessage = parsed.error;
-          if (parsed.message) errorMessage = parsed.message;
-        } catch (e) {
-          // Not JSON, use as is
-          // Check if it's an authentication error
-          if (error.message.includes("401") || error.message.includes("Non authentifié") || error.message.includes("connecté")) {
-            errorMessage = "Vous devez être connecté pour utiliser cette fonctionnalité";
-            setTimeout(() => {
-              setLocation("/auth");
-            }, 2000);
-          }
-        }
-      }
-      
-      // Check if it's a 401 error
-      if (error.status === 401 || errorMessage.includes("connecté") || errorMessage.includes("authentifié")) {
-        toast({
-          title: "Connexion requise",
-          description: "Vous devez être connecté pour importer une propriété. Redirection vers la page de connexion...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          setLocation("/auth");
-        }, 2000);
-        return;
-      }
+      // Extract backend error message from ApiError
+      const errorMessage = error?.body?.error || error?.message || "Impossible d'importer depuis Airbnb";
       
       toast({
         title: "Erreur d'import",
@@ -128,18 +85,6 @@ export default function AdminHost() {
       });
     },
   });
-
-  const handleImportAirbnb = () => {
-    if (!airbnbUrl.trim()) {
-      toast({
-        title: "URL requise",
-        description: "Veuillez entrer un lien Airbnb",
-        variant: "destructive",
-      });
-      return;
-    }
-    importAirbnbMutation.mutate(airbnbUrl.trim());
-  };
 
   useEffect(() => {
     if (properties && properties.length > 0 && !selectedProperty) {
@@ -209,20 +154,8 @@ export default function AdminHost() {
     });
   };
 
-  if (authLoading || isLoading) {
+  if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen">Chargement...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Connexion requise</h2>
-          <p className="text-muted-foreground mb-4">Vous devez être connecté pour accéder à cette page</p>
-          <Button onClick={() => setLocation("/auth")}>Aller à la page de connexion</Button>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -233,7 +166,7 @@ export default function AdminHost() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
       >
-        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="container mx-auto px-6 h-16 flex items-center justify-between gap-4">
           <motion.div 
             className="flex items-center gap-2"
             initial={{ x: -20, opacity: 0 }}
@@ -245,19 +178,47 @@ export default function AdminHost() {
             </div>
             <span className="text-xl font-bold">Espace Hôte</span>
           </motion.div>
+          
+          <motion.nav 
+            className="hidden md:flex items-center gap-1"
+            initial={{ y: -10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.3, duration: 0.4 }}
+          >
+            <Button variant="ghost" size="sm" asChild data-testid="link-home">
+              <Link href="/">
+                <Home className="w-4 h-4 mr-2" />
+                Accueil
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild data-testid="link-pricing">
+              <Link href="/pricing">
+                <DollarSign className="w-4 h-4 mr-2" />
+                Tarifs
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild data-testid="button-chat">
+              <Link href="/chat">
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Conversations
+              </Link>
+            </Button>
+          </motion.nav>
+
           <motion.div 
             className="flex items-center gap-3"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.4 }}
           >
-            <Link href="/chat">
-              <Button variant="ghost" size="sm" data-testid="button-chat">
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Conversations
-              </Button>
-            </Link>
             <ThemeToggle />
+            {currentUser && (
+              <Avatar className="w-9 h-9" data-testid="avatar-user">
+                <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
+                  {currentUser.firstName?.charAt(0).toUpperCase() || currentUser.email?.charAt(0).toUpperCase() || "U"}
+                </AvatarFallback>
+              </Avatar>
+            )}
             <Button 
               variant="ghost" 
               size="sm" 
@@ -281,60 +242,7 @@ export default function AdminHost() {
             transition={{ delay: 0.3, duration: 0.5 }}
           >
             <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Vos Propriétés</h2>
-                <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" className="gap-2">
-                      <Plus className="w-4 h-4" />
-                      Importer
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5" />
-                        Importer depuis Airbnb
-                      </DialogTitle>
-                      <DialogDescription>
-                        Collez le lien de votre annonce Airbnb et l'IA extraira automatiquement toutes les informations
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div>
-                        <Label htmlFor="airbnb-url">Lien Airbnb</Label>
-                        <Input
-                          id="airbnb-url"
-                          placeholder="https://www.airbnb.com/rooms/..."
-                          value={airbnbUrl}
-                          onChange={(e) => setAirbnbUrl(e.target.value)}
-                          disabled={isImporting}
-                        />
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Exemple: https://www.airbnb.com/rooms/12345678
-                        </p>
-                      </div>
-                      <Button
-                        onClick={handleImportAirbnb}
-                        disabled={isImporting || !airbnbUrl.trim()}
-                        className="w-full"
-                      >
-                        {isImporting ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Analyse en cours...
-                          </>
-                        ) : (
-                          <>
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                            Importer la propriété
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
+              <h2 className="text-xl font-semibold mb-4">Vos Propriétés</h2>
               <div className="space-y-2">
                 {properties?.map((property, index) => (
                   <motion.button
@@ -355,6 +263,86 @@ export default function AdminHost() {
                   </motion.button>
                 ))}
               </div>
+
+              {selectedProperty && (
+                <div className="mt-4 pt-4 border-t">
+                  <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        className="w-full gap-2"
+                        data-testid="button-open-import-dialog"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Importer depuis Airbnb
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                          <Download className="w-5 h-5" />
+                          Importer depuis Airbnb
+                        </DialogTitle>
+                        <DialogDescription>
+                          Collez le lien de votre annonce Airbnb. Notre IA analysera automatiquement les informations et remplira les champs de votre propriété.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div>
+                          <Label htmlFor="airbnb-url">Lien Airbnb</Label>
+                          <Input
+                            id="airbnb-url"
+                            placeholder="https://www.airbnb.fr/rooms/..."
+                            value={airbnbUrl}
+                            onChange={(e) => setAirbnbUrl(e.target.value)}
+                            data-testid="input-airbnb-url"
+                            className="mt-2"
+                          />
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Exemple : https://www.airbnb.fr/rooms/12345678
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setIsImportDialogOpen(false);
+                              setAirbnbUrl("");
+                            }}
+                            className="flex-1"
+                            data-testid="button-cancel-import"
+                          >
+                            Annuler
+                          </Button>
+                          <Button
+                            onClick={() => importAirbnbMutation.mutate(airbnbUrl)}
+                            disabled={!airbnbUrl.trim() || importAirbnbMutation.isPending}
+                            className="flex-1 gap-2"
+                            data-testid="button-import-airbnb"
+                          >
+                            {importAirbnbMutation.isPending ? (
+                              <>
+                                <motion.div
+                                  animate={{ rotate: 360 }}
+                                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                >
+                                  <Sparkles className="w-4 h-4" />
+                                </motion.div>
+                                Analyse en cours...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-4 h-4" />
+                                Importer
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              )}
             </Card>
 
             <AnimatePresence mode="wait">
@@ -423,9 +411,12 @@ export default function AdminHost() {
                 </TabsList>
 
                 <TabsContent value="general" className="space-y-6">
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Informations Générales</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <MapPin className="w-5 h-5 text-primary" />
+                        Informations Générales
+                      </CardTitle>
                       <CardDescription>Décrivez votre propriété</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -503,9 +494,12 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Contact Hôte</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <UserIcon className="w-5 h-5 text-primary" />
+                        Contact Hôte
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
@@ -548,9 +542,12 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="checkin" className="space-y-6">
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Horaires</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <Clock className="w-5 h-5 text-primary" />
+                        Horaires
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
@@ -580,9 +577,12 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Procédures</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <Info className="w-5 h-5 text-primary" />
+                        Procédures
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
@@ -627,9 +627,12 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="amenities" className="space-y-6">
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>WiFi</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <Wifi className="w-5 h-5 text-primary" />
+                        WiFi
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
@@ -657,9 +660,12 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Équipements</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <Utensils className="w-5 h-5 text-primary" />
+                        Équipements
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
@@ -705,9 +711,12 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="rules" className="space-y-6">
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Règles de la maison</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <Shield className="w-5 h-5 text-primary" />
+                        Règles de la maison
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
@@ -800,9 +809,12 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="info" className="space-y-6">
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Parking & Transports</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <MapPin className="w-5 h-5 text-primary" />
+                        Parking & Transports
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
@@ -833,9 +845,12 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Commerces & Services</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <Info className="w-5 h-5 text-primary" />
+                        Commerces & Services
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
@@ -866,9 +881,12 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-primary">
                     <CardHeader>
-                      <CardTitle>Informations Complémentaires</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <Info className="w-5 h-5 text-primary" />
+                        Informations Complémentaires
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>

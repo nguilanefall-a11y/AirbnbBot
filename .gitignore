@@ -4,26 +4,3 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
-
-# Environment variables (never commit sensitive data)
-.env
-.env.bak
-.env.local
-.local/
-
-# IDE settings
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS files
-.DS_Store
-Thumbs.db
-# Environment variables
-.env
-.env.bak
-.local/
-# VS Code settings
-.vscode/

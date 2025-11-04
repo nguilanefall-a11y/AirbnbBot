@@ -1,11 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Sparkles } from "lucide-react";
 import heroImage from "@assets/generated_images/Airbnb_hero_background_image_5f8c9168.png";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Link } from "wouter";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 
 export default function LandingHero() {
+  const { t } = useLanguage();
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -52,7 +54,7 @@ export default function LandingHero() {
             >
               <Sparkles className="w-6 h-6 text-primary" />
             </motion.div>
-            <span className="text-white/90 font-medium">Propulsé par l'IA</span>
+            <span className="text-white/90 font-medium">{t.landing.hero.poweredByAI}</span>
           </motion.div>
           
           <motion.h1 
@@ -61,7 +63,7 @@ export default function LandingHero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
           >
-            Votre Assistant Airbnb Intelligent 24/7
+            {t.landing.hero.title}
           </motion.h1>
           
           <motion.p 
@@ -70,8 +72,7 @@ export default function LandingHero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
           >
-            Automatisez les réponses aux questions de vos voyageurs grâce à l'intelligence artificielle. 
-            Gagnez du temps et offrez une expérience exceptionnelle à vos invités.
+            {t.landing.hero.subtitle}
           </motion.p>
           
           <motion.div 
@@ -80,7 +81,7 @@ export default function LandingHero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.6 }}
           >
-            <Link href="/chat">
+            <Link href="/auth">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button 
                   size="lg" 
@@ -88,11 +89,11 @@ export default function LandingHero() {
                   data-testid="button-start-free"
                 >
                   <MessageSquare className="w-5 h-5 mr-2" />
-                  Commencer Gratuitement
+                  {t.landing.hero.cta}
                 </Button>
               </motion.div>
             </Link>
-            <Link href="/host">
+            <a href="#features">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button 
                   size="lg" 
@@ -100,10 +101,10 @@ export default function LandingHero() {
                   className="rounded-full px-8 text-base font-semibold bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20"
                   data-testid="button-demo"
                 >
-                  Espace Hôte
+                  {t.landing.hero.learnMore}
                 </Button>
               </motion.div>
-            </Link>
+            </a>
           </motion.div>
           
           <motion.div 
@@ -118,7 +119,7 @@ export default function LandingHero() {
                 animate={{ scale: [1, 1.3, 1] }}
                 transition={{ duration: 2, repeat: Infinity }}
               />
-              <span>Configuration en 5 minutes</span>
+              <span>{t.landing.hero.quickSetup}</span>
             </div>
             <div className="flex items-center gap-2">
               <motion.div 
@@ -126,7 +127,7 @@ export default function LandingHero() {
                 animate={{ scale: [1, 1.3, 1] }}
                 transition={{ duration: 2, repeat: Infinity, delay: 1 }}
               />
-              <span>Sans engagement</span>
+              <span>{t.landing.hero.noCommitment}</span>
             </div>
           </motion.div>
         </div>

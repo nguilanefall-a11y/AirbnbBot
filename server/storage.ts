@@ -6,9 +6,15 @@ import {
   type Message,
   type InsertMessage,
   type User,
-  type UpsertUser
+  type UpsertUser,
+  users,
+  properties,
+  conversations,
+  messages
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -336,26 +342,176 @@ export class MemStorage implements IStorage {
   }
 }
 
-// Use database storage if DATABASE_URL is configured, otherwise use in-memory storage
-let storage: IStorage;
-
-// Initialize storage based on DATABASE_URL
-if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== "") {
-  try {
-    // Dynamic import to avoid errors if database module fails
-    const { DatabaseStorage } = require("./db-storage");
-    storage = new DatabaseStorage();
-    console.log("✅ Using PostgreSQL database storage (data will persist)");
-  } catch (error: any) {
-    console.warn("⚠️  Failed to initialize database storage, falling back to in-memory storage:", error.message);
-    storage = new MemStorage();
-    console.warn("⚠️  WARNING: Data will be lost when server restarts!");
+// PostgreSQL implementation using Drizzle ORM
+export class PgStorage implements IStorage {
+  // User operations
+  async getUser(id: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
   }
-} else {
-  console.warn("⚠️  DATABASE_URL not configured, using in-memory storage");
-  console.warn("⚠️  WARNING: Data will be lost when server restarts!");
-  console.warn("⚠️  To enable persistent storage, add DATABASE_URL to your .env file");
-  storage = new MemStorage();
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    return result[0];
+  }
+
+  async createUser(userData: { email: string; password: string; firstName?: string | null; lastName?: string | null }): Promise<User> {
+    const result = await db.insert(users).values({
+      email: userData.email,
+      password: userData.password,
+      firstName: userData.firstName ?? null,
+      lastName: userData.lastName ?? null,
+      activePropertyCount: "0",
+    }).returning();
+    return result[0];
+  }
+
+  async upsertUser(user: UpsertUser): Promise<User> {
+    const existing = await this.getUserByEmail(user.email);
+    if (existing) {
+      const result = await db.update(users)
+        .set({
+          firstName: user.firstName ?? existing.firstName,
+          lastName: user.lastName ?? existing.lastName,
+          profileImageUrl: user.profileImageUrl ?? existing.profileImageUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, existing.id))
+        .returning();
+      return result[0];
+    } else {
+      return this.createUser({
+        email: user.email,
+        password: "",
+        firstName: user.firstName,
+        lastName: user.lastName,
+      });
+    }
+  }
+
+  async updateUserStripeInfo(userId: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({
+        stripeCustomerId,
+        stripeSubscriptionId,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return result[0];
+  }
+
+  async updateUserSubscription(userId: string, subscriptionStatus: string): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({
+        subscriptionStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return result[0];
+  }
+
+  async startTrial(userId: string, trialStart: Date, trialEnd: Date): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({
+        trialStartedAt: trialStart,
+        trialEndsAt: trialEnd,
+        subscriptionStatus: "trialing",
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return result[0];
+  }
+
+  async updatePropertyCount(userId: string, count: number): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({
+        activePropertyCount: count.toString(),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return result[0];
+  }
+
+  // Property operations
+  async getProperty(id: string): Promise<Property | undefined> {
+    const result = await db.select().from(properties).where(eq(properties.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getPropertyByAccessKey(accessKey: string): Promise<Property | undefined> {
+    const result = await db.select().from(properties).where(eq(properties.accessKey, accessKey)).limit(1);
+    return result[0];
+  }
+
+  async getAllProperties(): Promise<Property[]> {
+    return await db.select().from(properties).orderBy(desc(properties.createdAt));
+  }
+
+  async getPropertiesByUser(userId: string): Promise<Property[]> {
+    return await db.select().from(properties).where(eq(properties.userId, userId)).orderBy(desc(properties.createdAt));
+  }
+
+  async createProperty(insertProperty: InsertProperty, userId: string): Promise<Property> {
+    const result = await db.insert(properties).values({
+      ...insertProperty,
+      userId,
+    }).returning();
+    return result[0];
+  }
+
+  async updateProperty(id: string, updates: Partial<InsertProperty>): Promise<Property | undefined> {
+    const result = await db.update(properties)
+      .set(updates)
+      .where(eq(properties.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteProperty(id: string): Promise<boolean> {
+    const result = await db.delete(properties).where(eq(properties.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Conversation operations
+  async getConversation(id: string): Promise<Conversation | undefined> {
+    const result = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getConversationsByProperty(propertyId: string): Promise<Conversation[]> {
+    return await db.select().from(conversations)
+      .where(eq(conversations.propertyId, propertyId))
+      .orderBy(desc(conversations.lastMessageAt));
+  }
+
+  async createConversation(insertConversation: InsertConversation): Promise<Conversation> {
+    const result = await db.insert(conversations).values(insertConversation).returning();
+    return result[0];
+  }
+
+  async updateConversationTimestamp(id: string): Promise<void> {
+    await db.update(conversations)
+      .set({ lastMessageAt: new Date() })
+      .where(eq(conversations.id, id));
+  }
+
+  // Message operations
+  async getMessagesByConversation(conversationId: string): Promise<Message[]> {
+    return await db.select().from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(messages.createdAt);
+  }
+
+  async createMessage(insertMessage: InsertMessage): Promise<Message> {
+    const result = await db.insert(messages).values(insertMessage).returning();
+    await this.updateConversationTimestamp(insertMessage.conversationId);
+    return result[0];
+  }
 }
 
-export { storage };
+// Use PostgreSQL storage instead of in-memory storage
+export const storage = new PgStorage();

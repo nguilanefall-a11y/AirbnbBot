@@ -314,131 +314,219 @@ export default function Guest() {
             </motion.div>
           </div>
         ) : (
-          <Card className="h-full flex flex-col">
-            <div className="p-4 border-b flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">{property.name}</h3>
-                <div className="flex gap-2 mt-1">
-                  <Badge variant="secondary" className="gap-1">
-                    <Bot className="w-3 h-3" />
-                    Assistant IA
-                  </Badge>
-                  {isWebSocketConnected && (
-                    <Badge variant="secondary" className="gap-1">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      Temps réel
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedConversation("")}
-                data-testid="button-back"
-              >
-                Retour
-              </Button>
-            </div>
-
-            <div className="flex-1 p-4 overflow-y-auto">
-              <AnimatePresence mode="popLayout">
-                {messages?.map((msg, index) => (
-                  <motion.div 
-                    key={msg.id} 
-                    className={cn("flex gap-3 mb-4", msg.isBot ? "justify-start" : "justify-end")}
-                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ 
-                      duration: 0.3,
-                      delay: index * 0.05,
-                      ease: "easeOut"
-                    }}
-                  >
-                    {msg.isBot && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
-                      >
-                        <Avatar className="w-8 h-8">
-                          <AvatarFallback className="bg-primary text-primary-foreground">
-                            <Bot className="w-4 h-4" />
-                          </AvatarFallback>
-                        </Avatar>
-                      </motion.div>
-                    )}
-                    <motion.div 
-                      className={cn(
-                        "max-w-[70%] rounded-2xl px-4 py-2 shadow-sm",
-                        msg.isBot ? "bg-muted" : "bg-primary text-primary-foreground"
-                      )}
-                      whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
-                    >
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      <span className={cn("text-xs opacity-70 mt-1 block", msg.isBot ? "text-muted-foreground" : "text-primary-foreground/70")}>
-                        {new Date(msg.createdAt).toLocaleTimeString()}
-                      </span>
-                    </motion.div>
-                    {!msg.isBot && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
-                      >
-                        <Avatar className="w-8 h-8">
-                          <AvatarFallback className="bg-accent">
-                            <User className="w-4 h-4" />
-                          </AvatarFallback>
-                        </Avatar>
-                      </motion.div>
-                    )}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              <div ref={messagesEndRef} />
-            </div>
-
+          <motion.div 
+            className="h-full flex flex-col bg-gradient-to-br from-background via-background to-muted/20 rounded-3xl shadow-2xl overflow-hidden border border-border/50"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          >
+            {/* Header with glassmorphism effect */}
             <motion.div 
-              className="p-4 border-t"
+              className="p-5 border-b border-border/50 bg-background/80 backdrop-blur-xl"
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <motion.div 
+                    className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg"
+                    whileHover={{ scale: 1.1, rotate: 5 }}
+                    transition={{ type: "spring", stiffness: 300 }}
+                  >
+                    <Sparkles className="w-6 h-6 text-white" />
+                  </motion.div>
+                  <div>
+                    <h3 className="font-bold text-lg">{property.name}</h3>
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="secondary" className="gap-1 text-xs">
+                        <Bot className="w-3 h-3" />
+                        Assistant IA
+                      </Badge>
+                      {isWebSocketConnected && (
+                        <Badge variant="secondary" className="gap-1 text-xs">
+                          <motion.div 
+                            className="w-2 h-2 bg-green-500 rounded-full"
+                            animate={{ scale: [1, 1.3, 1], opacity: [1, 0.7, 1] }}
+                            transition={{ duration: 2, repeat: Infinity }}
+                          />
+                          Temps réel
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedConversation("")}
+                    data-testid="button-back"
+                    className="rounded-xl"
+                  >
+                    Retour
+                  </Button>
+                </motion.div>
+              </div>
+            </motion.div>
+
+            {/* Messages area with gradient background */}
+            <div className="flex-1 p-6 overflow-y-auto relative">
+              {/* Subtle gradient decoration */}
+              <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
+              
+              <div className="relative z-10">
+                <AnimatePresence mode="popLayout">
+                  {messages?.map((msg, index) => (
+                    <motion.div 
+                      key={msg.id} 
+                      className={cn("flex gap-3 mb-6", msg.isBot ? "justify-start" : "justify-end")}
+                      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ 
+                        duration: 0.4,
+                        delay: index * 0.05,
+                        ease: "easeOut"
+                      }}
+                    >
+                      {msg.isBot && (
+                        <motion.div
+                          initial={{ scale: 0, rotate: -180 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+                        >
+                          <Avatar className="w-10 h-10 ring-2 ring-primary/20">
+                            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground">
+                              <Bot className="w-5 h-5" />
+                            </AvatarFallback>
+                          </Avatar>
+                        </motion.div>
+                      )}
+                      <motion.div 
+                        className={cn(
+                          "max-w-[75%] rounded-3xl px-5 py-3 shadow-md relative",
+                          msg.isBot 
+                            ? "bg-gradient-to-br from-muted to-muted/80 backdrop-blur-sm" 
+                            : "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-primary/25"
+                        )}
+                        whileHover={{ 
+                          scale: 1.02, 
+                          y: -2,
+                          transition: { duration: 0.2 } 
+                        }}
+                      >
+                        {/* Glassmorphism effect for bot messages */}
+                        {msg.isBot && (
+                          <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+                        )}
+                        
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap relative z-10">{msg.content}</p>
+                        <span className={cn(
+                          "text-xs opacity-70 mt-2 block relative z-10", 
+                          msg.isBot ? "text-muted-foreground" : "text-primary-foreground/80"
+                        )}>
+                          {new Date(msg.createdAt).toLocaleTimeString('fr-FR', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                          })}
+                        </span>
+                      </motion.div>
+                      {!msg.isBot && (
+                        <motion.div
+                          initial={{ scale: 0, rotate: 180 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+                        >
+                          <Avatar className="w-10 h-10 ring-2 ring-accent/20">
+                            <AvatarFallback className="bg-gradient-to-br from-accent to-accent/70">
+                              <User className="w-5 h-5" />
+                            </AvatarFallback>
+                          </Avatar>
+                        </motion.div>
+                      )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+
+            {/* Modern input area with glassmorphism */}
+            <motion.div 
+              className="p-5 border-t border-border/50 bg-background/95 backdrop-blur-xl"
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Tapez votre question..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                  data-testid="input-message"
-                  className="transition-all duration-200 focus:scale-[1.01]"
-                />
+              <div className="flex gap-3 items-end">
+                <div className="flex-1 relative">
+                  <Input
+                    placeholder="Posez votre question..."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                    data-testid="input-message"
+                    className="text-base rounded-2xl border-2 transition-all duration-300 focus:scale-[1.01] focus:shadow-lg pr-12 bg-background/50 backdrop-blur-sm"
+                  />
+                  {message.trim() && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                    >
+                      <Badge variant="secondary" className="text-xs gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        IA prête
+                      </Badge>
+                    </motion.div>
+                  )}
+                </div>
                 <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.1, rotate: 5 }}
+                  whileTap={{ scale: 0.9, rotate: -5 }}
                 >
                   <Button
                     size="icon"
                     onClick={handleSend}
                     data-testid="button-send"
-                    className="relative overflow-hidden"
+                    className="rounded-2xl relative overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-primary to-primary/80"
                   >
+                    {/* Shimmer effect on hover */}
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                      initial={{ x: '-100%' }}
+                      whileHover={{ x: '100%' }}
+                      transition={{ duration: 0.6 }}
+                    />
                     <motion.div
                       animate={message.trim() ? {
                         scale: [1, 1.2, 1],
                         rotate: [0, -10, 10, 0]
                       } : {}}
-                      transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+                      transition={{ duration: 0.6, repeat: Infinity, repeatDelay: 2 }}
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="w-4 h-4 relative z-10" />
                     </motion.div>
                   </Button>
                 </motion.div>
               </div>
+              
+              {/* Quick tips */}
+              <motion.p 
+                className="text-xs text-muted-foreground mt-3 flex items-center gap-2"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+              >
+                <Sparkles className="w-3 h-3" />
+                Demandez-moi n'importe quoi sur {property.name}
+              </motion.p>
             </motion.div>
-          </Card>
+          </motion.div>
         )}
       </div>
     </div>

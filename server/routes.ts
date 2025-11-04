@@ -5,16 +5,16 @@ import Stripe from "stripe";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
 import { insertPropertySchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
-import { generateChatResponse } from "./gemini";
-import { analyzeAirbnbListing } from "./airbnb-scraper";
+import { generateChatResponse, extractAirbnbInfo } from "./gemini";
 
 // Initialize Stripe (optional - only needed for subscription features)
 const stripe = process.env.STRIPE_SECRET_KEY 
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
 
-// Middleware to ensure user has active subscription or is in trial
-async function ensureHostAccess(req: any, res: any, next: any) {
+// Middleware to check if user can create/modify properties
+// First property is FREE, additional properties require subscription
+async function ensurePropertyAccess(req: any, res: any, next: any) {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -26,36 +26,81 @@ async function ensureHostAccess(req: any, res: any, next: any) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Check if user is in trial period
+    // Count user's existing properties
+    const userProperties = await storage.getPropertiesByUser(userId);
+    const propertyCount = userProperties.length;
+
+    // Allow if user has an active subscription or trial
     if (user.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
       return next(); // Trial is active
     }
 
-    // Check if user has active subscription
     if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
       return next(); // Subscription is active
     }
 
-    // Trial expired and no active subscription
+    // Allow first property for free (when creating)
+    if (req.method === 'POST' && propertyCount === 0) {
+      return next(); // First property is free!
+    }
+
+    // Allow modifications to existing properties
+    if (req.method === 'PATCH' || req.method === 'DELETE') {
+      return next(); // Can always modify existing properties
+    }
+
+    // Block creation of second+ property without subscription
     return res.status(403).json({ 
       error: "Subscription required",
-      message: "Your free trial has ended. Please subscribe to continue using the platform.",
-      trialEnded: true
+      message: "Votre première propriété est gratuite ! Pour ajouter plus de propriétés, veuillez souscrire à un abonnement.",
+      needsSubscription: true,
+      currentPropertyCount: propertyCount
     });
   } catch (error) {
-    console.error("Error checking host access:", error);
+    console.error("Error checking property access:", error);
     return res.status(500).json({ error: "Failed to verify access" });
   }
 }
+
+// Alias for backward compatibility
+const ensureHostAccess = ensurePropertyAccess;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   setupAuth(app);
 
-  // Properties routes
-  app.get("/api/properties", async (_req, res) => {
+  // User profile route (protected)
+  app.get("/api/user", isAuthenticated, async (req: any, res) => {
     try {
-      const properties = await storage.getAllProperties();
+      const userId = req.user.id;
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Return only safe, non-sensitive user data
+      const safeUserData = {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      };
+      
+      res.json(safeUserData);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  // Properties routes - Get user's own properties (protected)
+  app.get("/api/properties", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const properties = await storage.getPropertiesByUser(userId);
       res.json(properties);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch properties" });
@@ -83,73 +128,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(property);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch property" });
-    }
-  });
-
-  // Import property from Airbnb URL
-  app.post("/api/properties/import-airbnb", isAuthenticated, async (req: any, res) => {
-    // Allow import for all authenticated users (bypass subscription check for now)
-    // You can add ensureHostAccess back if needed
-    try {
-      const userId = req.user.id;
-      const { airbnbUrl } = req.body;
-
-      if (!airbnbUrl || typeof airbnbUrl !== 'string') {
-        return res.status(400).json({ error: "URL Airbnb requise" });
-      }
-
-      // Validate Airbnb URL format
-      if (!airbnbUrl.includes('airbnb.com') && !airbnbUrl.includes('airbnb.fr')) {
-        return res.status(400).json({ error: "URL Airbnb invalide" });
-      }
-
-      // Analyze the Airbnb listing with AI
-      const propertyData = await analyzeAirbnbListing(airbnbUrl);
-      
-      // Get user info for host name default
-      const user = await storage.getUser(userId);
-      if (user && !propertyData.hostName) {
-        propertyData.hostName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Hôte';
-      }
-
-      // Create the property
-      const validatedData = insertPropertySchema.parse(propertyData);
-      const property = await storage.createProperty(validatedData, userId);
-      
-      // Update property count for subscription
-      const userProperties = await storage.getPropertiesByUser(userId);
-      const newCount = userProperties.length;
-      await storage.updatePropertyCount(userId, newCount);
-      
-      // Update Stripe subscription quantity if user has an active subscription
-      if (user?.stripeSubscriptionId && stripe) {
-        try {
-          const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
-          if (subscription.items.data.length > 0) {
-            await stripe.subscriptions.update(user.stripeSubscriptionId, {
-              items: [{ id: subscription.items.data[0].id, quantity: newCount }],
-            });
-          }
-        } catch (stripeError) {
-          console.error("Error updating Stripe quantity:", stripeError);
-        }
-      }
-      
-      res.status(201).json(property);
-    } catch (error: any) {
-      console.error("Error importing from Airbnb:", error);
-      
-      // Provide more specific error messages
-      if (error.message && error.message.includes("Non authentifié")) {
-        return res.status(401).json({ 
-          error: "Vous devez être connecté pour importer une propriété",
-          message: "Veuillez vous connecter avant d'importer une propriété Airbnb"
-        });
-      }
-      
-      res.status(400).json({ 
-        error: error.message || "Impossible d'importer la propriété depuis Airbnb" 
-      });
     }
   });
 
@@ -257,6 +235,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(conversation);
     } catch (error) {
       res.status(400).json({ error: "Invalid conversation data" });
+    }
+  });
+
+  // Airbnb import route (no subscription required - only updates existing property)
+  app.post("/api/import-airbnb", isAuthenticated, async (req, res) => {
+    try {
+      const { url } = req.body;
+      
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: "URL Airbnb requise" });
+      }
+
+      // Strict hostname validation to prevent SSRF
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        return res.status(400).json({ error: "URL invalide" });
+      }
+
+      const allowedHosts = [
+        'airbnb.com',
+        'www.airbnb.com',
+        'airbnb.fr',
+        'www.airbnb.fr',
+        'airbnb.ca',
+        'www.airbnb.ca',
+        'airbnb.co.uk',
+        'www.airbnb.co.uk'
+      ];
+
+      if (!allowedHosts.includes(parsedUrl.hostname.toLowerCase())) {
+        return res.status(400).json({ error: "Veuillez fournir un lien Airbnb valide (airbnb.com, airbnb.fr, etc.)" });
+      }
+
+      const extractedData = await extractAirbnbInfo(url);
+      res.json(extractedData);
+    } catch (error: any) {
+      console.error("Airbnb import error:", error);
+      res.status(500).json({ 
+        error: error.message || "Impossible d'importer les informations de l'annonce Airbnb"
+      });
     }
   });
 

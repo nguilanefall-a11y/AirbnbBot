@@ -112,3 +112,91 @@ OBJECTIF: Chaque interaction doit donner envie au voyageur de laisser 5 étoiles
     throw new Error("Erreur lors de la génération de la réponse");
   }
 }
+
+export async function extractAirbnbInfo(url: string): Promise<Partial<Property>> {
+  try {
+    // Fetch the Airbnb listing page HTML
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Airbnb page: ${response.statusText}`);
+    }
+
+    const html = await response.text();
+
+    // Extract text content and limit size for Gemini API
+    const textContent = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 30000); // Limit to 30k chars to avoid token limits
+
+    const extractionPrompt = `Tu es un expert en extraction d'informations immobilières. Analyse ce contenu HTML d'une page Airbnb et extrais TOUTES les informations disponibles dans un format JSON structuré.
+
+Contenu de la page Airbnb :
+${textContent}
+
+Extrais et retourne UNIQUEMENT un objet JSON (sans markdown, sans backticks) avec ces champs (utilise null si l'information n'est pas disponible) :
+
+{
+  "name": "Nom de la propriété",
+  "description": "Description détaillée",
+  "address": "Adresse complète",
+  "floor": "Étage si disponible",
+  "checkInTime": "Heure de check-in (format HH:MM)",
+  "checkOutTime": "Heure de check-out (format HH:MM)", 
+  "checkInProcedure": "Instructions de check-in",
+  "checkOutProcedure": "Instructions de check-out",
+  "amenities": ["Liste", "des", "équipements"],
+  "houseRules": "Règles de la maison",
+  "maxGuests": nombre_max_invités,
+  "petsAllowed": true_ou_false,
+  "smokingAllowed": true_ou_false,
+  "partiesAllowed": true_ou_false,
+  "parkingInfo": "Informations parking",
+  "publicTransport": "Informations transports en commun",
+  "nearbyShops": "Commerces à proximité",
+  "restaurants": "Restaurants recommandés",
+  "additionalInfo": "Toute autre information pertinente"
+}
+
+IMPORTANT : Retourne UNIQUEMENT le JSON brut, sans texte avant ou après, sans markdown, sans backticks.`;
+
+    const geminiResponse = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: extractionPrompt,
+    });
+
+    const responseText = (geminiResponse.text || "{}").trim();
+    
+    // Remove markdown code blocks if present
+    const jsonText = responseText
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    const extractedData = JSON.parse(jsonText);
+
+    // Ensure amenities is an array
+    if (extractedData.amenities && !Array.isArray(extractedData.amenities)) {
+      extractedData.amenities = [];
+    }
+
+    // Convert maxGuests to number if it exists
+    if (extractedData.maxGuests) {
+      extractedData.maxGuests = parseInt(extractedData.maxGuests, 10);
+    }
+
+    return extractedData;
+  } catch (error) {
+    console.error("Error extracting Airbnb info:", error);
+    throw new Error("Impossible d'extraire les informations du lien Airbnb. Vérifiez que le lien est valide.");
+  }
+}
