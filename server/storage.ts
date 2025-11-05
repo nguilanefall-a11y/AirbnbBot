@@ -513,5 +513,18 @@ export class PgStorage implements IStorage {
   }
 }
 
-// Use PostgreSQL storage instead of in-memory storage
-export const storage = new PgStorage();
+// Choose storage backend dynamically based on database availability
+function createStorage(): IStorage {
+  if (db) {
+    try {
+      return new PgStorage();
+    } catch (err) {
+      console.warn("⚠️  Failed to initialize Postgres storage, falling back to memory:", err);
+      return new MemStorage();
+    }
+  }
+  console.warn("⚠️  DATABASE_URL not configured, using in-memory storage (data will reset on restart)");
+  return new MemStorage();
+}
+
+export const storage = createStorage();
