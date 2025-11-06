@@ -14,7 +14,9 @@ export class ChatWebSocket {
     if (this.ws && this.isConnected) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host || 'localhost:5000';
+    const hostname = (window.location && window.location.hostname) || 'localhost';
+    const port = (window.location && (window.location as any).port) || '5000';
+    const host = `${hostname}:${port}`;
     const wsUrl = `${protocol}//${host}/ws`;
 
     this.ws = new WebSocket(wsUrl);

@@ -28,7 +28,16 @@ export default function ChatMessage({ message, isBot, timestamp }: ChatMessagePr
               : "bg-primary text-primary-foreground rounded-tr-sm"
           )}
         >
-          <p className="text-sm leading-relaxed">{message}</p>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {message
+              .replace(/\*\*(.*?)\*\*/g, '$1') // Remove **bold**
+              .replace(/\*(.*?)\*/g, '$1') // Remove *italic*
+              .replace(/_(.*?)_/g, '$1') // Remove _italic_
+              .replace(/~~(.*?)~~/g, '$1') // Remove ~~strikethrough~~
+              .replace(/`(.*?)`/g, '$1') // Remove `code`
+              .replace(/#{1,6}\s/g, '') // Remove markdown headers
+            }
+          </p>
         </div>
         <span className="text-xs text-muted-foreground mt-1 px-1">{timestamp}</span>
       </div>

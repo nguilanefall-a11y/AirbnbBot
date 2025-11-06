@@ -4,8 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import Stripe from "stripe";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
-import { insertPropertySchema, insertConversationSchema, insertMessageSchema } from "@shared/schema";
-import { generateChatResponse, extractAirbnbInfo } from "./gemini";
+import { insertPropertySchema, insertConversationSchema, insertMessageSchema, insertMessageFeedbackSchema, insertResponseTemplateSchema, insertTeamMemberSchema, insertNotificationSchema } from "@shared/schema";
+import { generateChatResponse, extractAirbnbInfo, extractAirbnbInfoFromText } from "./gemini";
+import { scrapeAirbnbWithPlaywright } from "./airbnb-playwright";
 
 // Initialize Stripe (optional - only needed for subscription features)
 const stripe = process.env.STRIPE_SECRET_KEY 
@@ -18,17 +19,38 @@ async function ensurePropertyAccess(req: any, res: any, next: any) {
   try {
     const userId = req.user?.id;
     if (!userId) {
+      console.error("ensurePropertyAccess: No user ID in request");
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    const user = await storage.getUser(userId);
+    let user;
+    try {
+      user = await storage.getUser(userId);
+    } catch (userError: any) {
+      console.error("ensurePropertyAccess: Error fetching user:", userError?.message || userError);
+      return res.status(500).json({ 
+        error: "Failed to verify user",
+        details: userError?.message || "Database error"
+      });
+    }
+    
     if (!user) {
+      console.error("ensurePropertyAccess: User not found:", userId);
       return res.status(404).json({ error: "User not found" });
     }
 
     // Count user's existing properties
-    const userProperties = await storage.getPropertiesByUser(userId);
-    const propertyCount = userProperties.length;
+    let userProperties;
+    try {
+      userProperties = await storage.getPropertiesByUser(userId);
+    } catch (propError: any) {
+      console.error("ensurePropertyAccess: Error fetching properties:", propError?.message || propError);
+      // Don't block access if we can't count properties - allow the operation
+      console.warn("ensurePropertyAccess: Allowing access despite property count error");
+      return next();
+    }
+    
+    const propertyCount = userProperties?.length || 0;
 
     // Allow if user has an active subscription or trial
     if (user.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
@@ -56,9 +78,13 @@ async function ensurePropertyAccess(req: any, res: any, next: any) {
       needsSubscription: true,
       currentPropertyCount: propertyCount
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error checking property access:", error);
-    return res.status(500).json({ error: "Failed to verify access" });
+    console.error("Error stack:", error?.stack);
+    return res.status(500).json({ 
+      error: "Failed to verify access",
+      details: error?.message || "Unknown error"
+    });
   }
 }
 
@@ -280,6 +306,255 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // New: Import Airbnb and create a property for the authenticated user
+  // Note: We don't use ensureHostAccess here to allow import even if property count check fails
+  app.post("/api/properties/import-airbnb", isAuthenticated, async (req: any, res) => {
+    // Set a timeout for the entire import operation (60 seconds)
+    const importTimeout = setTimeout(() => {
+      if (!res.headersSent) {
+        res.status(408).json({ 
+          error: "Import timeout",
+          message: "L'import a pris trop de temps. Veuillez réessayer ou utiliser la méthode manuelle (copier-coller le texte)."
+        });
+      }
+    }, 60000); // 60 seconds timeout
+
+    try {
+      const userId = req.user.id;
+      const { airbnbUrl } = req.body || {};
+
+      if (!airbnbUrl || typeof airbnbUrl !== 'string') {
+        clearTimeout(importTimeout);
+        return res.status(400).json({ error: "URL Airbnb requise" });
+      }
+
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(airbnbUrl);
+      } catch {
+        return res.status(400).json({ error: "URL invalide" });
+      }
+
+      const allowedHosts = [
+        'airbnb.com', 'www.airbnb.com',
+        'airbnb.fr', 'www.airbnb.fr',
+        'airbnb.ca', 'www.airbnb.ca',
+        'airbnb.co.uk', 'www.airbnb.co.uk'
+      ];
+      if (!allowedHosts.includes(parsedUrl.hostname.toLowerCase())) {
+        return res.status(400).json({ error: "Veuillez fournir un lien Airbnb valide (airbnb.com, airbnb.fr, etc.)" });
+      }
+
+      // 1) Try DOM scraping with Playwright (if enabled)
+      let extracted: any = {};
+      let visibleTextForAI: string | null = null;
+      
+      try {
+        if (process.env.PLAYWRIGHT_ENABLED === '1') {
+          extracted = await scrapeAirbnbWithPlaywright(airbnbUrl);
+          // Check if we got visible text for AI fallback
+          if (extracted.__visibleText) {
+            visibleTextForAI = extracted.__visibleText;
+            delete extracted.__visibleText;
+          }
+        }
+      } catch (e: any) {
+        console.error("Playwright scraping failed:", e?.message);
+        // Continue to AI fallback
+      }
+
+      // 2) If insufficient data, fallback to AI extraction
+      if (!extracted?.name || !extracted?.description || !extracted?.address) {
+        try {
+          // Use visible text if available from Playwright, otherwise fetch HTML
+          let aiExtracted: any;
+          if (visibleTextForAI && visibleTextForAI.length > 500) {
+            // Use text extracted by Playwright for AI analysis
+            aiExtracted = await extractAirbnbInfoFromText(visibleTextForAI);
+          } else {
+            // Fallback to fetching HTML and extracting text
+            aiExtracted = await extractAirbnbInfo(airbnbUrl);
+          }
+          // Merge AI extracted data with Playwright data (AI takes precedence for missing fields)
+          extracted = { 
+            ...extracted, 
+            ...aiExtracted,
+            // Keep Playwright data if it's more complete
+            name: extracted.name || aiExtracted.name,
+            description: extracted.description || aiExtracted.description,
+            address: extracted.address || aiExtracted.address,
+          };
+        } catch (aiError: any) {
+          console.error("AI extraction failed:", aiError?.message);
+          // Continue with whatever we have from Playwright
+        }
+      }
+
+      const safe: any = {
+        name: extracted.name || "Nouvelle Propriété",
+        description: extracted.description || "Description à compléter",
+        address: extracted.address || "Adresse à compléter",
+        floor: extracted.floor || null,
+        doorCode: extracted.doorCode || null,
+        accessInstructions: extracted.accessInstructions || null,
+        checkInTime: extracted.checkInTime || '15:00',
+        checkOutTime: extracted.checkOutTime || '11:00',
+        checkInProcedure: extracted.checkInProcedure || null,
+        checkOutProcedure: extracted.checkOutProcedure || null,
+        keyLocation: extracted.keyLocation || null,
+        wifiName: extracted.wifiName || null,
+        wifiPassword: extracted.wifiPassword || null,
+        amenities: Array.isArray(extracted.amenities) ? extracted.amenities : [],
+        kitchenEquipment: extracted.kitchenEquipment || null,
+        houseRules: extracted.houseRules || "",
+        maxGuests: extracted.maxGuests ? String(extracted.maxGuests) : null,
+        petsAllowed: Boolean(extracted.petsAllowed),
+        smokingAllowed: Boolean(extracted.smokingAllowed),
+        partiesAllowed: Boolean(extracted.partiesAllowed),
+        parkingInfo: extracted.parkingInfo || null,
+        publicTransport: extracted.publicTransport || null,
+        nearbyShops: extracted.nearbyShops || null,
+        restaurants: extracted.restaurants || null,
+        hostName: (await storage.getUser(userId))?.firstName || 'Hôte',
+        hostPhone: null,
+        emergencyContact: null,
+        heatingInstructions: extracted.heatingInstructions || null,
+        garbageInstructions: extracted.garbageInstructions || null,
+        applianceInstructions: extracted.applianceInstructions || null,
+        additionalInfo: extracted.additionalInfo || null,
+        faqs: extracted.faqs || null,
+        lastImportedAt: new Date(),
+      };
+
+      // Validate against schema (required fields ensured above)
+      const validated = insertPropertySchema.parse(safe);
+      
+      // Check property count before creating (but don't block if check fails)
+      let propertyCount = 0;
+      try {
+        const userProperties = await storage.getPropertiesByUser(userId);
+        propertyCount = userProperties?.length || 0;
+      } catch (countError: any) {
+        console.warn("Could not count properties, allowing import anyway:", countError?.message);
+        // Continue anyway - allow import if property count check fails
+      }
+      
+      // Only block if user already has a property and no subscription
+      if (propertyCount > 0) {
+        try {
+          const user = await storage.getUser(userId);
+          const hasActiveSubscription = user?.subscriptionStatus === 'active' || 
+                                        user?.subscriptionStatus === 'trialing' ||
+                                        (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date());
+          
+          if (!hasActiveSubscription) {
+            return res.status(403).json({ 
+              error: "Subscription required",
+              message: "Votre première propriété est gratuite ! Pour ajouter plus de propriétés, veuillez souscrire à un abonnement.",
+              needsSubscription: true,
+              currentPropertyCount: propertyCount
+            });
+          }
+        } catch (subError: any) {
+          console.warn("Could not check subscription, allowing import anyway:", subError?.message);
+          // Continue anyway - allow import if subscription check fails
+        }
+      }
+      
+      const property = await storage.createProperty(validated, userId);
+      clearTimeout(importTimeout);
+      return res.status(201).json(property);
+    } catch (error: any) {
+      clearTimeout(importTimeout);
+      console.error("Error importing Airbnb property:", error);
+      console.error("Error stack:", error?.stack);
+      
+      // Don't crash the server, always return a response
+      if (res.headersSent) {
+        console.error("Response already sent, cannot send error response");
+        return;
+      }
+      
+      const message = error?.message || "Impossible d'importer la propriété depuis Airbnb";
+      
+      // Provide more specific error messages
+      if (message.includes("timeout") || message.includes("Timeout")) {
+        return res.status(408).json({ 
+          error: "Import timeout",
+          message: "L'import a pris trop de temps. Veuillez utiliser la méthode manuelle (copier-coller le texte de la page)."
+        });
+      }
+      
+      if (message.includes("browser") || message.includes("Playwright")) {
+        return res.status(500).json({ 
+          error: "Erreur lors du scraping",
+          message: "L'import automatique a échoué. Veuillez utiliser la méthode manuelle (copier-coller le texte de la page).",
+          details: message
+        });
+      }
+      
+      return res.status(400).json({ 
+        error: message,
+        details: error?.message || "Unknown error"
+      });
+    }
+  });
+
+  // New: Import from pasted text (fallback when direct fetch fails)
+  app.post("/api/properties/import-airbnb-text", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { rawText } = req.body || {};
+      if (!rawText || typeof rawText !== 'string' || rawText.trim().length < 50) {
+        return res.status(400).json({ error: "Texte insuffisant pour l'extraction" });
+      }
+
+      const extracted = await extractAirbnbInfoFromText(rawText);
+      const safe: any = {
+        name: extracted.name || "Nouvelle Propriété",
+        description: extracted.description || "Description à compléter",
+        address: extracted.address || "Adresse à compléter",
+        floor: extracted.floor || null,
+        doorCode: extracted.doorCode || null,
+        accessInstructions: extracted.accessInstructions || null,
+        checkInTime: extracted.checkInTime || '15:00',
+        checkOutTime: extracted.checkOutTime || '11:00',
+        checkInProcedure: extracted.checkInProcedure || null,
+        checkOutProcedure: extracted.checkOutProcedure || null,
+        keyLocation: extracted.keyLocation || null,
+        wifiName: extracted.wifiName || null,
+        wifiPassword: extracted.wifiPassword || null,
+        amenities: Array.isArray(extracted.amenities) ? extracted.amenities : [],
+        kitchenEquipment: extracted.kitchenEquipment || null,
+        houseRules: extracted.houseRules || "",
+        maxGuests: extracted.maxGuests ? String(extracted.maxGuests) : null,
+        petsAllowed: Boolean(extracted.petsAllowed),
+        smokingAllowed: Boolean(extracted.smokingAllowed),
+        partiesAllowed: Boolean(extracted.partiesAllowed),
+        parkingInfo: extracted.parkingInfo || null,
+        publicTransport: extracted.publicTransport || null,
+        nearbyShops: extracted.nearbyShops || null,
+        restaurants: extracted.restaurants || null,
+        hostName: (await storage.getUser(userId))?.firstName || 'Hôte',
+        hostPhone: null,
+        emergencyContact: null,
+        heatingInstructions: extracted.heatingInstructions || null,
+        garbageInstructions: extracted.garbageInstructions || null,
+        applianceInstructions: extracted.applianceInstructions || null,
+        additionalInfo: extracted.additionalInfo || null,
+        faqs: extracted.faqs || null,
+        lastImportedAt: new Date(),
+      };
+
+      const validated = insertPropertySchema.parse(safe);
+      const property = await storage.createProperty(validated, userId);
+      return res.status(201).json(property);
+    } catch (error: any) {
+      const message = error?.message || "Échec de l'import depuis le texte";
+      return res.status(400).json({ error: message });
+    }
+  });
+
   // Stripe subscription routes
   // Start paid subscription after trial (29.90€ per property)
   app.post('/api/start-subscription', isAuthenticated, async (req: any, res) => {
@@ -430,22 +705,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Message is required" });
       }
 
-      // Get the demo property (Paris 11e)
+      // Get the demo property (Paris 8e - Champs-Élysées)
       const demoProperty = await storage.getPropertyByAccessKey("demo-paris-01");
       if (!demoProperty) {
+        console.error("Demo property not found with accessKey: demo-paris-01");
         return res.status(404).json({ error: "Demo property not found" });
       }
 
+      // Check if Gemini API key is configured
+      if (!process.env.GEMINI_API_KEY) {
+        console.error("GEMINI_API_KEY is not configured");
+        return res.status(500).json({ 
+          error: "AI service is not configured. Please check GEMINI_API_KEY in .env file." 
+        });
+      }
+
       // Generate AI response using demo property
-      const aiResponse = await generateChatResponse(message, demoProperty);
+      let aiResponse;
+      try {
+        aiResponse = await generateChatResponse(message, demoProperty);
+      } catch (geminiError: any) {
+        console.error("Gemini API error:", geminiError);
+        const errorMessage = geminiError?.message || "Failed to generate AI response";
+        
+        // Provide more specific error messages
+        if (errorMessage.includes("API key") || errorMessage.includes("authentication") || errorMessage.includes("Permission denied")) {
+          return res.status(500).json({ 
+            error: "AI service authentication failed. Please check your GEMINI_API_KEY." 
+          });
+        }
+        
+        return res.status(500).json({ 
+          error: `AI service error: ${errorMessage}` 
+        });
+      }
+      
+      if (!aiResponse || aiResponse.trim().length === 0) {
+        console.error("Empty response from Gemini");
+        return res.status(500).json({ 
+          error: "AI service returned an empty response. Please try again." 
+        });
+      }
       
       res.json({
         userMessage: message,
         botMessage: aiResponse,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error in demo chat:", error);
-      res.status(500).json({ error: "Failed to generate response" });
+      console.error("Error stack:", error?.stack);
+      console.error("Error details:", {
+        message: error?.message,
+        name: error?.name,
+        cause: error?.cause,
+      });
+      const errorMessage = error?.message || String(error) || "Failed to generate response";
+      res.status(500).json({ 
+        error: `Server error: ${errorMessage}` 
+      });
     }
   });
 
@@ -493,6 +810,291 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
   // WebSocket setup
+  // ========================================
+  // NEW FEATURES ROUTES
+  // ========================================
+
+  // Analytics routes
+  app.get("/api/analytics", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const propertyId = req.query.propertyId as string | undefined;
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+
+      const analytics = await storage.getAnalytics(userId, propertyId, startDate, endDate);
+      res.json(analytics);
+    } catch (error: any) {
+      console.error("Error fetching analytics:", error);
+      res.status(500).json({ error: error?.message || "Failed to fetch analytics" });
+    }
+  });
+
+  // Message Feedback routes
+  app.post("/api/messages/:messageId/feedback", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { messageId } = req.params;
+      const { isHelpful, comment } = req.body;
+
+      if (typeof isHelpful !== 'boolean') {
+        return res.status(400).json({ error: "isHelpful must be a boolean" });
+      }
+
+      const validated = insertMessageFeedbackSchema.parse({
+        messageId,
+        isHelpful,
+        comment: comment || null,
+        userId,
+      });
+
+      const feedback = await storage.createMessageFeedback(validated);
+      res.status(201).json(feedback);
+    } catch (error: any) {
+      console.error("Error creating feedback:", error);
+      res.status(400).json({ error: error?.message || "Failed to create feedback" });
+    }
+  });
+
+  app.get("/api/feedback/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const propertyId = req.query.propertyId as string | undefined;
+
+      const stats = await storage.getFeedbackStats(userId, propertyId);
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Error fetching feedback stats:", error);
+      res.status(500).json({ error: error?.message || "Failed to fetch feedback stats" });
+    }
+  });
+
+  // Response Templates routes
+  app.get("/api/templates", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const propertyId = req.query.propertyId as string | undefined;
+
+      const templates = await storage.getResponseTemplates(userId, propertyId || undefined);
+      res.json(templates);
+    } catch (error: any) {
+      console.error("Error fetching templates:", error);
+      res.status(500).json({ error: error?.message || "Failed to fetch templates" });
+    }
+  });
+
+  app.post("/api/templates", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const validated = insertResponseTemplateSchema.parse({ ...req.body, userId });
+      const template = await storage.createResponseTemplate(validated);
+      res.status(201).json(template);
+    } catch (error: any) {
+      console.error("Error creating template:", error);
+      res.status(400).json({ error: error?.message || "Failed to create template" });
+    }
+  });
+
+  app.patch("/api/templates/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const template = await storage.getResponseTemplate(id);
+      if (!template || template.userId !== req.user.id) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      const updated = await storage.updateResponseTemplate(id, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating template:", error);
+      res.status(400).json({ error: error?.message || "Failed to update template" });
+    }
+  });
+
+  app.delete("/api/templates/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const template = await storage.getResponseTemplate(id);
+      if (!template || template.userId !== req.user.id) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      await storage.deleteResponseTemplate(id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Error deleting template:", error);
+      res.status(400).json({ error: error?.message || "Failed to delete template" });
+    }
+  });
+
+  // Export routes
+  app.get("/api/conversations/export/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { propertyId } = req.params;
+      const format = (req.query.format as string) || 'csv';
+
+      // Verify property ownership
+      const property = await storage.getProperty(propertyId);
+      if (!property || property.userId !== userId) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      const conversations = await storage.getConversationsByProperty(propertyId);
+      const allMessages = await Promise.all(
+        conversations.map(c => storage.getMessagesByConversation(c.id))
+      );
+
+      if (format === 'csv') {
+        // Export CSV
+        const csvRows = ['Conversation ID,Guest Name,Message ID,Is Bot,Content,Language,Category,Created At'];
+        conversations.forEach((conv, idx) => {
+          const messages = allMessages[idx];
+          messages.forEach(msg => {
+            const row = [
+              conv.id,
+              `"${conv.guestName.replace(/"/g, '""')}"`,
+              msg.id,
+              msg.isBot ? 'Yes' : 'No',
+              `"${msg.content.replace(/"/g, '""')}"`,
+              msg.language || '',
+              msg.category || '',
+              msg.createdAt.toISOString(),
+            ];
+            csvRows.push(row.join(','));
+          });
+        });
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=conversations-${propertyId}-${Date.now()}.csv`);
+        res.send(csvRows.join('\n'));
+      } else if (format === 'json') {
+        // Export JSON
+        const exportData = conversations.map((conv, idx) => ({
+          conversation: conv,
+          messages: allMessages[idx],
+        }));
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=conversations-${propertyId}-${Date.now()}.json`);
+        res.json(exportData);
+      } else {
+        res.status(400).json({ error: "Invalid format. Use 'csv' or 'json'" });
+      }
+    } catch (error: any) {
+      console.error("Error exporting conversations:", error);
+      res.status(500).json({ error: error?.message || "Failed to export conversations" });
+    }
+  });
+
+  // Notifications routes
+  app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const isRead = req.query.isRead === 'true' ? true : req.query.isRead === 'false' ? false : undefined;
+
+      const notifications = await storage.getNotifications(userId, isRead);
+      res.json(notifications);
+    } catch (error: any) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ error: error?.message || "Failed to fetch notifications" });
+    }
+  });
+
+  app.post("/api/notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const validated = insertNotificationSchema.parse({ ...req.body, userId });
+      const notification = await storage.createNotification(validated);
+      res.status(201).json(notification);
+    } catch (error: any) {
+      console.error("Error creating notification:", error);
+      res.status(400).json({ error: error?.message || "Failed to create notification" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const notification = await storage.markNotificationAsRead(id);
+      if (!notification) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
+      res.json(notification);
+    } catch (error: any) {
+      console.error("Error marking notification as read:", error);
+      res.status(400).json({ error: error?.message || "Failed to mark notification as read" });
+    }
+  });
+
+  app.post("/api/notifications/read-all", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      await storage.markAllNotificationsAsRead(userId);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Error marking all notifications as read:", error);
+      res.status(500).json({ error: error?.message || "Failed to mark all notifications as read" });
+    }
+  });
+
+  // Team routes
+  app.get("/api/team/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const members = await storage.getTeamMembers(userId);
+      res.json(members);
+    } catch (error: any) {
+      console.error("Error fetching team members:", error);
+      res.status(500).json({ error: error?.message || "Failed to fetch team members" });
+    }
+  });
+
+  app.post("/api/team/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const validated = insertTeamMemberSchema.parse({ ...req.body, teamOwnerId: userId });
+      const member = await storage.createTeamMember(validated);
+      res.status(201).json(member);
+    } catch (error: any) {
+      console.error("Error creating team member:", error);
+      res.status(400).json({ error: error?.message || "Failed to create team member" });
+    }
+  });
+
+  app.patch("/api/team/members/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const member = await storage.getTeamMember(id);
+      if (!member || member.teamOwnerId !== req.user.id) {
+        return res.status(404).json({ error: "Team member not found" });
+      }
+
+      const updated = await storage.updateTeamMember(id, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating team member:", error);
+      res.status(400).json({ error: error?.message || "Failed to update team member" });
+    }
+  });
+
+  app.delete("/api/team/members/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const member = await storage.getTeamMember(id);
+      if (!member || member.teamOwnerId !== req.user.id) {
+        return res.status(404).json({ error: "Team member not found" });
+      }
+
+      await storage.deleteTeamMember(id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Error deleting team member:", error);
+      res.status(400).json({ error: error?.message || "Failed to delete team member" });
+    }
+  });
+
+  // WebSocket server for real-time chat
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
   wss.on("connection", (ws: WebSocket) => {

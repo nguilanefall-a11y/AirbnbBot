@@ -12,6 +12,12 @@ import AdminHost from "@/pages/AdminHost";
 import Guest from "@/pages/Guest";
 import Pricing from "@/pages/Pricing";
 import Subscribe from "@/pages/Subscribe";
+import Settings from "@/pages/Settings";
+import Analytics from "@/pages/Analytics";
+import LegalNotice from "@/pages/LegalNotice";
+import TermsOfService from "@/pages/TermsOfService";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import CookiePolicy from "@/pages/CookiePolicy";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -24,6 +30,12 @@ function Router() {
       <Route path="/guest/:accessKey" component={Guest} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/subscribe" component={Subscribe} />
+      <Route path="/settings" component={Settings} />
+      <Route path="/analytics" component={Analytics} />
+      <Route path="/legal/legal-notice" component={LegalNotice} />
+      <Route path="/legal/terms" component={TermsOfService} />
+      <Route path="/legal/privacy" component={PrivacyPolicy} />
+      <Route path="/legal/cookies" component={CookiePolicy} />
       <Route component={NotFound} />
     </Switch>
   );

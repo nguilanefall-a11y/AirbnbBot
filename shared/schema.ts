@@ -94,6 +94,9 @@ export const properties = pgTable("properties", {
   additionalInfo: text("additional_info"),
   faqs: text("faqs"),
   
+  // Import metadata
+  lastImportedAt: timestamp("last_imported_at"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -110,8 +113,73 @@ export const messages = pgTable("messages", {
   conversationId: varchar("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   isBot: boolean("is_bot").notNull().default(false),
+  language: varchar("language"), // Langue détectée du message
+  category: varchar("category"), // Catégorie de la question (WiFi, Check-in, etc.)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Table pour le feedback sur les messages
+export const messageFeedback = pgTable("message_feedback", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  isHelpful: boolean("is_helpful").notNull(), // true = utile, false = pas utile
+  comment: text("comment"), // Commentaire optionnel
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }), // Hôte qui a donné le feedback
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_message_feedback_message_id").on(table.messageId),
+  index("IDX_message_feedback_user_id").on(table.userId),
+]);
+
+// Table pour les templates de réponses
+export const responseTemplates = pgTable("response_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  propertyId: varchar("property_id").references(() => properties.id, { onDelete: "cascade" }), // null = global à l'utilisateur
+  title: text("title").notNull(), // Titre du template
+  keywords: text("keywords").array().notNull().default(sql`ARRAY[]::text[]`), // Mots-clés pour matcher
+  content: text("content").notNull(), // Contenu du template
+  category: varchar("category"), // Catégorie (WiFi, Check-in, etc.)
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_response_templates_user_id").on(table.userId),
+  index("IDX_response_templates_property_id").on(table.propertyId),
+]);
+
+// Table pour les membres d'équipe
+export const teamMembers = pgTable("team_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  teamOwnerId: varchar("team_owner_id").notNull().references(() => users.id, { onDelete: "cascade" }), // Propriétaire de l'équipe
+  memberId: varchar("member_id").notNull().references(() => users.id, { onDelete: "cascade" }), // Membre de l'équipe
+  role: varchar("role").notNull().default("member"), // owner, admin, moderator, viewer
+  propertyId: varchar("property_id").references(() => properties.id, { onDelete: "cascade" }), // null = toutes les propriétés
+  invitedBy: varchar("invited_by").references(() => users.id, { onDelete: "set null" }),
+  invitedAt: timestamp("invited_at").defaultNow().notNull(),
+  joinedAt: timestamp("joined_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_team_members_team_owner_id").on(table.teamOwnerId),
+  index("IDX_team_members_member_id").on(table.memberId),
+]);
+
+// Table pour les notifications
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type").notNull(), // email, sms, push, in_app
+  category: varchar("category").notNull(), // urgent, daily_summary, weekly_summary, etc.
+  subject: text("subject"),
+  content: text("content").notNull(),
+  isRead: boolean("is_read").default(false),
+  metadata: jsonb("metadata"), // Données supplémentaires (propertyId, conversationId, etc.)
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  readAt: timestamp("read_at"),
+}, (table) => [
+  index("IDX_notifications_user_id").on(table.userId),
+  index("IDX_notifications_is_read").on(table.isRead),
+]);
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -165,6 +233,30 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
   createdAt: true,
 });
 
+export const insertMessageFeedbackSchema = createInsertSchema(messageFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertResponseTemplateSchema = createInsertSchema(responseTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
+  id: true,
+  createdAt: true,
+  invitedAt: true,
+  joinedAt: true,
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  sentAt: true,
+  readAt: true,
+});
+
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type Property = typeof properties.$inferSelect;
 
@@ -173,6 +265,18 @@ export type Conversation = typeof conversations.$inferSelect;
 
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
+
+export type InsertMessageFeedback = z.infer<typeof insertMessageFeedbackSchema>;
+export type MessageFeedback = typeof messageFeedback.$inferSelect;
+
+export type InsertResponseTemplate = z.infer<typeof insertResponseTemplateSchema>;
+export type ResponseTemplate = typeof responseTemplates.$inferSelect;
+
+export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
+export type TeamMember = typeof teamMembers.$inferSelect;
+
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type RegisterUser = z.infer<typeof registerSchema>;

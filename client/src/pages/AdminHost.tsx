@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,13 +11,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Download, Sparkles, DollarSign, MapPin, User as UserIcon, Clock, Wifi, Shield, Info, Utensils, Thermometer } from "lucide-react";
+import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Download, Sparkles, DollarSign, MapPin, User as UserIcon, Clock, Wifi, Shield, Info, Utensils, Thermometer, BarChart3 } from "lucide-react";
 import type { Property, InsertProperty, User } from "@shared/schema";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Settings as SettingsIcon } from "lucide-react";
+import Footer from "@/components/Footer";
 
 export default function AdminHost() {
   const { toast } = useToast();
@@ -26,6 +36,9 @@ export default function AdminHost() {
   const [copied, setCopied] = useState(false);
   const [formData, setFormData] = useState<Partial<InsertProperty>>({});
   const [airbnbUrl, setAirbnbUrl] = useState("");
+  const [amenityInput, setAmenityInput] = useState("");
+  const [importedFields, setImportedFields] = useState<Set<string>>(new Set());
+  const [lastImportedAt, setLastImportedAt] = useState<Date | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
   const { data: currentUser } = useQuery<User>({
@@ -52,20 +65,27 @@ export default function AdminHost() {
 
   const importAirbnbMutation = useMutation({
     mutationFn: async (url: string) => {
-      const res = await apiRequest("POST", "/api/import-airbnb", { url });
+      const res = await apiRequest("POST", "/api/properties/import-airbnb", { airbnbUrl: url });
       return await res.json();
     },
     onSuccess: (data) => {
       // Auto-fill form with imported data
       if (selectedProperty) {
-        setFormData(prev => ({ ...prev, ...data }));
-        
-        // Auto-save all imported fields
-        updateMutation.mutate({
-          id: selectedProperty.id,
-          updates: data
-        });
+        const updates = { ...data, lastImportedAt: new Date().toISOString() as any };
+        setFormData(prev => ({ ...prev, ...updates }));
+        updateMutation.mutate({ id: selectedProperty.id, updates });
+      } else if (data && data.id) {
+        const updates = { ...data, lastImportedAt: new Date().toISOString() as any };
+        setSelectedProperty(updates as any);
+        setFormData({ ...updates });
       }
+
+      // Mark imported fields
+      const keys = Object.keys(data || {}).filter(k => data[k] !== undefined && data[k] !== null && data[k] !== "");
+      setImportedFields(new Set(keys));
+
+      // Track timestamp
+      setLastImportedAt(new Date());
       
       setIsImportDialogOpen(false);
       setAirbnbUrl("");
@@ -128,6 +148,9 @@ export default function AdminHost() {
         additionalInfo: selectedProperty.additionalInfo || "",
         faqs: selectedProperty.faqs || "",
       });
+      // Reset imported markers when switching properties
+      setImportedFields(new Set());
+      setLastImportedAt(null);
     }
   }, [selectedProperty]);
 
@@ -140,6 +163,30 @@ export default function AdminHost() {
       id: selectedProperty.id,
       updates: { [field]: value }
     });
+  };
+
+  const renderLabel = (text: string, keyName: keyof InsertProperty) => (
+    <div className="flex items-center gap-2">
+      <Label htmlFor={String(keyName)}>{text}</Label>
+      {importedFields.has(String(keyName)) && (
+        <Badge variant="secondary" className="text-[10px]">Importé</Badge>
+      )}
+    </div>
+  );
+
+  const addAmenity = () => {
+    const val = amenityInput.trim();
+    if (!val) return;
+    const next = Array.from(new Set([...(formData.amenities || []), val]));
+    setFormData(prev => ({ ...prev, amenities: next }));
+    setAmenityInput("");
+    handleAutoSave("amenities", next);
+  };
+
+  const removeAmenity = (item: string) => {
+    const next = (formData.amenities || []).filter(a => a !== item);
+    setFormData(prev => ({ ...prev, amenities: next }));
+    handleAutoSave("amenities", next);
   };
 
   const copyGuestLink = () => {
@@ -212,23 +259,66 @@ export default function AdminHost() {
             transition={{ delay: 0.2, duration: 0.4 }}
           >
             <ThemeToggle />
-            {currentUser && (
-              <Avatar className="w-9 h-9" data-testid="avatar-user">
-                <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
-                  {currentUser.firstName?.charAt(0).toUpperCase() || currentUser.email?.charAt(0).toUpperCase() || "U"}
-                </AvatarFallback>
-              </Avatar>
+            {lastImportedAt && (
+              <Badge variant="outline" className="hidden md:inline-flex">
+                Importé le {lastImportedAt.toLocaleDateString()} à {lastImportedAt.toLocaleTimeString()}
+              </Badge>
             )}
             <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => logoutMutation.mutate()}
-              disabled={logoutMutation.isPending}
-              data-testid="button-logout"
+              variant="outline" 
+              size="sm"
+              onClick={() => setIsImportDialogOpen(true)}
+              data-testid="button-import"
             >
-              <LogOut className="w-4 h-4 mr-2" />
-              {logoutMutation.isPending ? "..." : "Déconnexion"}
+              <Sparkles className="w-4 h-4 mr-2" />
+              Importer depuis Airbnb
             </Button>
+            {currentUser && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="focus:outline-none">
+                    <Avatar className="w-9 h-9 cursor-pointer hover:ring-2 ring-primary transition-all" data-testid="avatar-user">
+                      <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
+                        {currentUser.firstName?.charAt(0).toUpperCase() || currentUser.email?.charAt(0).toUpperCase() || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                             <p className="text-sm font-medium leading-none">
+                               {currentUser.firstName || currentUser.email}
+                             </p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {currentUser.email}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/analytics">
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      Analytics
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Link href="/settings">
+                      <SettingsIcon className="w-4 h-4 mr-2" />
+                      Paramètres
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => logoutMutation.mutate()}
+                    disabled={logoutMutation.isPending}
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Se déconnecter
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </motion.div>
         </div>
       </motion.header>
@@ -243,6 +333,48 @@ export default function AdminHost() {
           >
             <Card className="p-6">
               <h2 className="text-xl font-semibold mb-4">Vos Propriétés</h2>
+              <div className="mb-3">
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    // Minimal create: will fill name/address later
+                    const payload: Partial<InsertProperty> = {
+                      name: "Nouvelle Propriété",
+                      description: "Description à compléter",
+                      address: "Adresse à compléter",
+                      checkInTime: "15:00",
+                      checkOutTime: "11:00",
+                      houseRules: "",
+                      hostName: currentUser?.firstName || "Hôte",
+                      amenities: [],
+                    } as any;
+                    apiRequest("POST", "/api/properties", payload)
+                      .then(r => r.json())
+                      .then((p) => {
+                        queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+                        setSelectedProperty(p);
+                        setFormData({
+                          name: p.name,
+                          description: p.description,
+                          address: p.address,
+                          checkInTime: p.checkInTime,
+                          checkOutTime: p.checkOutTime,
+                          houseRules: p.houseRules,
+                          hostName: p.hostName,
+                          amenities: p.amenities || [],
+                        });
+                        toast({ title: "Propriété créée", description: "Vous pouvez compléter les informations" });
+                      })
+                      .catch((e) => {
+                        toast({ title: "Erreur", description: e?.message || "Création impossible", variant: "destructive" });
+                      });
+                  }}
+                >
+                  + Ajouter une propriété
+                </Button>
+              </div>
               <div className="space-y-2">
                 {properties?.map((property, index) => (
                   <motion.button
@@ -258,7 +390,7 @@ export default function AdminHost() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    <div className="font-medium">{property.name}</div>
+                  <div className="font-medium">{property.name}</div>
                     <div className="text-sm opacity-75">{property.address}</div>
                   </motion.button>
                 ))}
@@ -401,14 +533,243 @@ export default function AdminHost() {
             transition={{ delay: 0.4, duration: 0.5 }}
           >
             {selectedProperty ? (
-              <Tabs defaultValue="general" className="w-full">
-                <TabsList className="grid w-full grid-cols-5">
+              <Tabs defaultValue="tableau" className="w-full">
+                <TabsList className="grid w-full grid-cols-6">
+                  <TabsTrigger value="tableau">Tableau</TabsTrigger>
                   <TabsTrigger value="general">Général</TabsTrigger>
                   <TabsTrigger value="checkin">Check-in/out</TabsTrigger>
                   <TabsTrigger value="amenities">Équipements</TabsTrigger>
                   <TabsTrigger value="rules">Règles</TabsTrigger>
                   <TabsTrigger value="info">Infos Utiles</TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="tableau" className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <Card className="p-4">
+                      {renderLabel("Adresse", "address")}
+                      <Input
+                        id="address"
+                        className="mt-2"
+                        value={formData.address || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("address", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Code porte", "doorCode")}
+                      <Input
+                        id="doorCode"
+                        className="mt-2"
+                        value={formData.doorCode || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, doorCode: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("doorCode", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Étage", "floor")}
+                      <Input
+                        id="floor"
+                        className="mt-2"
+                        value={formData.floor || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, floor: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("floor", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Heure d'arrivée", "checkInTime")}
+                      <Input
+                        id="checkInTime"
+                        type="time"
+                        className="mt-2"
+                        value={formData.checkInTime || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, checkInTime: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("checkInTime", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Heure de départ", "checkOutTime")}
+                      <Input
+                        id="checkOutTime"
+                        type="time"
+                        className="mt-2"
+                        value={formData.checkOutTime || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, checkOutTime: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("checkOutTime", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Voyageurs max", "maxGuests")}
+                      <Input
+                        id="maxGuests"
+                        className="mt-2"
+                        value={formData.maxGuests || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, maxGuests: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("maxGuests", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Nom WiFi", "wifiName")}
+                      <Input
+                        id="wifiName"
+                        className="mt-2"
+                        value={formData.wifiName || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, wifiName: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("wifiName", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Mot de passe WiFi", "wifiPassword")}
+                      <Input
+                        id="wifiPassword"
+                        className="mt-2"
+                        value={formData.wifiPassword || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, wifiPassword: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("wifiPassword", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                      {renderLabel("Instructions d'accès", "accessInstructions")}
+                      <Textarea
+                        id="accessInstructions"
+                        rows={3}
+                        className="mt-2"
+                        value={formData.accessInstructions || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, accessInstructions: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("accessInstructions", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Emplacement des clés", "keyLocation")}
+                      <Input
+                        id="keyLocation"
+                        className="mt-2"
+                        value={formData.keyLocation || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, keyLocation: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("keyLocation", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Téléphone hôte", "hostPhone")}
+                      <Input
+                        id="hostPhone"
+                        className="mt-2"
+                        value={formData.hostPhone || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, hostPhone: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("hostPhone", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Contact d'urgence", "emergencyContact")}
+                      <Input
+                        id="emergencyContact"
+                        className="mt-2"
+                        value={formData.emergencyContact || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, emergencyContact: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("emergencyContact", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Parking", "parkingInfo")}
+                      <Textarea
+                        id="parkingInfo"
+                        rows={2}
+                        className="mt-2"
+                        value={formData.parkingInfo || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, parkingInfo: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("parkingInfo", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4">
+                      {renderLabel("Transports", "publicTransport")}
+                      <Textarea
+                        id="publicTransport"
+                        rows={2}
+                        className="mt-2"
+                        value={formData.publicTransport || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, publicTransport: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("publicTransport", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                      {renderLabel("Règles de la maison", "houseRules")}
+                      <Textarea
+                        id="houseRules"
+                        rows={4}
+                        className="mt-2"
+                        placeholder="Règles importantes pour vos voyageurs"
+                        value={formData.houseRules || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, houseRules: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("houseRules", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                      {renderLabel("Commerces à proximité", "nearbyShops")}
+                      <Textarea
+                        id="nearbyShops"
+                        rows={3}
+                        className="mt-2"
+                        placeholder="Supermarchés, pharmacies, laveries, etc."
+                        value={formData.nearbyShops || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, nearbyShops: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("nearbyShops", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                      {renderLabel("Restaurants recommandés", "restaurants")}
+                      <Textarea
+                        id="restaurants"
+                        rows={3}
+                        className="mt-2"
+                        placeholder="Vos bonnes adresses"
+                        value={formData.restaurants || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, restaurants: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("restaurants", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                      {renderLabel("Informations supplémentaires", "additionalInfo")}
+                      <Textarea
+                        id="additionalInfo"
+                        rows={4}
+                        className="mt-2"
+                        placeholder="Autres informations utiles pour vos voyageurs"
+                        value={formData.additionalInfo || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, additionalInfo: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("additionalInfo", e.target.value)}
+                      />
+                    </Card>
+
+                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                      {renderLabel("FAQs (Questions fréquentes)", "faqs")}
+                      <Textarea
+                        id="faqs"
+                        rows={6}
+                        className="mt-2"
+                        placeholder={"Q: Où est le Wi‑Fi ?\nR: À l'entrée, scanner le QR code.\n\nQ: Comment utiliser le canapé‑lit ?\nR: Tirer et rabattre comme indiqué."}
+                        value={formData.faqs || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, faqs: e.target.value }))}
+                        onBlur={(e) => handleAutoSave("faqs", e.target.value)}
+                      />
+                    </Card>
+                  </div>
+                </TabsContent>
 
                 <TabsContent value="general" className="space-y-6">
                   <Card className="border-l-4 border-l-primary">
@@ -637,7 +998,7 @@ export default function AdminHost() {
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="wifiName">Nom du réseau</Label>
+                          {renderLabel("Nom du réseau", "wifiName")}
                           <Input
                             id="wifiName"
                             value={formData.wifiName || ""}
@@ -647,7 +1008,7 @@ export default function AdminHost() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="wifiPassword">Mot de passe WiFi</Label>
+                          {renderLabel("Mot de passe WiFi", "wifiPassword")}
                           <Input
                             id="wifiPassword"
                             value={formData.wifiPassword || ""}
@@ -669,7 +1030,7 @@ export default function AdminHost() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
-                        <Label htmlFor="kitchenEquipment">Équipement de cuisine</Label>
+                        {renderLabel("Équipement de cuisine", "kitchenEquipment")}
                         <Textarea
                           id="kitchenEquipment"
                           rows={3}
@@ -682,7 +1043,38 @@ export default function AdminHost() {
                       </div>
 
                       <div>
-                        <Label htmlFor="applianceInstructions">Instructions appareils</Label>
+                        {renderLabel("Équipements (liste)", "amenities")}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {(formData.amenities || []).map((item) => (
+                            <Badge key={item} variant="secondary" className="flex items-center gap-2">
+                              {item}
+                              <button
+                                type="button"
+                                aria-label={`Remove ${item}`}
+                                className="ml-1 text-xs opacity-70 hover:opacity-100"
+                                onClick={() => removeAmenity(item)}
+                              >
+                                ×
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <Input
+                            placeholder="Ajouter un équipement et Entrée"
+                            value={amenityInput}
+                            onChange={(e) => setAmenityInput(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAmenity(); } }}
+                            data-testid="input-amenity"
+                          />
+                          <Button type="button" onClick={addAmenity} variant="outline" data-testid="button-add-amenity">
+                            Ajouter
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div>
+                        {renderLabel("Instructions appareils", "applianceInstructions")}
                         <Textarea
                           id="applianceInstructions"
                           rows={3}
@@ -695,7 +1087,7 @@ export default function AdminHost() {
                       </div>
 
                       <div>
-                        <Label htmlFor="heatingInstructions">Instructions chauffage/climatisation</Label>
+                        {renderLabel("Instructions chauffage/climatisation", "heatingInstructions")}
                         <Textarea
                           id="heatingInstructions"
                           rows={3}
@@ -926,9 +1318,32 @@ export default function AdminHost() {
                 </div>
               </Card>
             )}
+            {selectedProperty && (
+              <div className="mt-6">
+                <Button
+                  variant="destructive"
+                  className="w-full md:w-auto"
+                  onClick={() => {
+                    if (!confirm("Supprimer cette propriété ?")) return;
+                    apiRequest("DELETE", `/api/properties/${selectedProperty.id}`)
+                      .then(() => {
+                        queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+                        setSelectedProperty(null);
+                        toast({ title: "Propriété supprimée" });
+                      })
+                      .catch((err) => {
+                        toast({ title: "Erreur", description: err?.message || "Suppression impossible", variant: "destructive" });
+                      });
+                  }}
+                >
+                  Supprimer cette propriété
+                </Button>
+              </div>
+            )}
           </motion.div>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

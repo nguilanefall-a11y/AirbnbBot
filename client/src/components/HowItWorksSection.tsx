@@ -1,34 +1,35 @@
 import { useLanguage } from "@/contexts/LanguageContext";
-import createAccountImg from "@assets/generated_images/Create_account_illustration_681bbd0d.png";
-import configureDetailsImg from "@assets/generated_images/Configure_details_illustration_9f38c174.png";
-import shareLinkImg from "@assets/generated_images/Share_link_illustration_f205d54c.png";
-import relaxImg from "@assets/generated_images/Relax_illustration_ea818164.png";
+import relaxFallback from "@assets/generated_images/Relax_illustration_ea818164.png";
 
 export default function HowItWorksSection() {
   const { t } = useLanguage();
-  
+
   const steps = [
     {
       number: 1,
-      image: createAccountImg,
+      // Partager le lien aux voyageurs (mobile + lien)
+      image: "https://images.unsplash.com/photo-1512486130939-2c4f79935e4f?q=80&w=2000&auto=format&fit=crop",
       title: t.landing.howItWorks.step1.title,
       description: t.landing.howItWorks.step1.description
     },
     {
       number: 2,
-      image: configureDetailsImg,
+      // Configurer les infos du logement (formulaires / paramètres)
+      image: "https://images.unsplash.com/photo-1519947486511-46149fa0a254?q=80&w=2000&auto=format&fit=crop",
       title: t.landing.howItWorks.step2.title,
       description: t.landing.howItWorks.step2.description
     },
     {
       number: 3,
-      image: shareLinkImg,
+      // Détente / séjour serein - homme détendu
+      image: "https://images.unsplash.com/photo-1516387938699-a93567ec168e?q=80&w=2000&auto=format&fit=crop",
       title: t.landing.howItWorks.step3.title,
       description: t.landing.howItWorks.step3.description
     },
     {
       number: 4,
-      image: relaxImg,
+      // Image personnalisée 4K - femme détendue dans salon moderne avec robot/IA
+      image: "/hiw-step4.jpg",
       title: t.landing.howItWorks.step4.title,
       description: t.landing.howItWorks.step4.description
     }
@@ -51,11 +52,12 @@ export default function HowItWorksSection() {
             <div key={step.number} className="relative">
               <div className="flex flex-col items-center text-center">
                 <div className="relative mb-6">
-                  <div className="w-48 h-48 rounded-lg overflow-hidden bg-background border shadow-sm">
+                  <div className="w-56 h-40 rounded-lg overflow-hidden bg-background border shadow-sm">
                     <img 
-                      src={step.image} 
+                      src={step.image}
                       alt={step.title}
                       className="w-full h-full object-cover"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = relaxFallback; }}
                     />
                   </div>
                   <div className="absolute -top-3 -right-3 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold shadow-lg">
