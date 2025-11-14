@@ -96,6 +96,8 @@ export const properties = pgTable("properties", {
   
   // Import metadata
   lastImportedAt: timestamp("last_imported_at"),
+  icalUrl: text("ical_url"), // URL du calendrier iCal pour synchronisation
+  cleaningPersonId: varchar("cleaning_person_id"), // ID de la personne responsable du ménage
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
