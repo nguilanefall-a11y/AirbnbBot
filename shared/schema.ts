@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -37,6 +37,17 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const cleaningPersons = pgTable("cleaning_persons", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  whatsapp: boolean("whatsapp").default(true),
+  email: text("email"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const properties = pgTable("properties", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -49,6 +60,9 @@ export const properties = pgTable("properties", {
   floor: text("floor"),
   doorCode: text("door_code"),
   accessInstructions: text("access_instructions"),
+  
+  icalUrl: text("ical_url"),
+  cleaningPersonId: varchar("cleaning_person_id").references(() => cleaningPersons.id, { onDelete: "set null" }),
   
   // Check-in / Check-out
   checkInTime: text("check_in_time").notNull().default("15:00"),
@@ -181,6 +195,20 @@ export const notifications = pgTable("notifications", {
   index("IDX_notifications_is_read").on(table.isRead),
 ]);
 
+export const cleanings = pgTable("cleanings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  dateMenage: timestamp("date_menage").notNull(),
+  status: varchar("status").notNull().default("à faire"),
+  assignedTo: varchar("assigned_to").references(() => cleaningPersons.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("IDX_cleanings_property_date").on(table.propertyId, table.dateMenage),
+  index("IDX_cleanings_status").on(table.status),
+]);
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -257,6 +285,18 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
   readAt: true,
 });
 
+export const insertCleaningPersonSchema = createInsertSchema(cleaningPersons).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCleaningSchema = createInsertSchema(cleanings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type Property = typeof properties.$inferSelect;
 
@@ -277,6 +317,12 @@ export type TeamMember = typeof teamMembers.$inferSelect;
 
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+export type InsertCleaningPerson = z.infer<typeof insertCleaningPersonSchema>;
+export type CleaningPerson = typeof cleaningPersons.$inferSelect;
+
+export type InsertCleaning = z.infer<typeof insertCleaningSchema>;
+export type Cleaning = typeof cleanings.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type RegisterUser = z.infer<typeof registerSchema>;

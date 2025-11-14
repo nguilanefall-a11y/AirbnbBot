@@ -250,6 +250,12 @@ export default function AdminHost() {
                 Conversations
               </Link>
             </Button>
+            <Button variant="ghost" size="sm" asChild data-testid="button-cleaning">
+              <Link href="/cleaning">
+                <Sparkles className="w-4 h-4 mr-2" />
+                Ménages
+              </Link>
+            </Button>
           </motion.nav>
 
           <motion.div 
@@ -302,7 +308,13 @@ export default function AdminHost() {
                       Analytics
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/cleaning">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Gestion des ménages
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link href="/settings">
                       <SettingsIcon className="w-4 h-4 mr-2" />
                       Paramètres

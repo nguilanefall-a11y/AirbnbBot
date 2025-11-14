@@ -200,7 +200,7 @@ Preferred communication style: Simple, everyday language.
 - Application functions without Stripe for testing AI features
 
 **Database:**
-- PostgreSQL via Neon serverless (`@neondatabase/serverless`)
+- PostgreSQL via Supabase (`pg` + `drizzle-orm/node-postgres`)
 - Required: `DATABASE_URL` environment variable
 - Connection pooling and serverless optimization included
 - Database migrations managed via Drizzle Kit

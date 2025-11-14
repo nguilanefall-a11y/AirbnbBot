@@ -14,6 +14,7 @@ import Pricing from "@/pages/Pricing";
 import Subscribe from "@/pages/Subscribe";
 import Settings from "@/pages/Settings";
 import Analytics from "@/pages/Analytics";
+import Cleaning from "@/pages/Cleaning";
 import LegalNotice from "@/pages/LegalNotice";
 import TermsOfService from "@/pages/TermsOfService";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/subscribe" component={Subscribe} />
       <Route path="/settings" component={Settings} />
       <Route path="/analytics" component={Analytics} />
+      <Route path="/cleaning" component={Cleaning} />
       <Route path="/legal/legal-notice" component={LegalNotice} />
       <Route path="/legal/terms" component={TermsOfService} />
       <Route path="/legal/privacy" component={PrivacyPolicy} />

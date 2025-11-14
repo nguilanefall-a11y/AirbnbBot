@@ -7,6 +7,7 @@ import { setupAuth, isAuthenticated } from "./auth";
 import { insertPropertySchema, insertConversationSchema, insertMessageSchema, insertMessageFeedbackSchema, insertResponseTemplateSchema, insertTeamMemberSchema, insertNotificationSchema } from "@shared/schema";
 import { generateChatResponse, extractAirbnbInfo, extractAirbnbInfoFromText } from "./gemini";
 import { scrapeAirbnbWithPlaywright } from "./airbnb-playwright";
+import { listCleaningsForUser, syncAirbnbCalendars, markCleaningStatus, notifyCleaningTask } from "./cleaning-service";
 
 // Initialize Stripe (optional - only needed for subscription features)
 const stripe = process.env.STRIPE_SECRET_KEY 
@@ -397,6 +398,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         floor: extracted.floor || null,
         doorCode: extracted.doorCode || null,
         accessInstructions: extracted.accessInstructions || null,
+        icalUrl: extracted.icalUrl || null,
+        cleaningPersonId: null,
         checkInTime: extracted.checkInTime || '15:00',
         checkOutTime: extracted.checkOutTime || '11:00',
         checkInProcedure: extracted.checkInProcedure || null,
@@ -517,6 +520,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         floor: extracted.floor || null,
         doorCode: extracted.doorCode || null,
         accessInstructions: extracted.accessInstructions || null,
+        icalUrl: extracted.icalUrl || null,
+        cleaningPersonId: null,
         checkInTime: extracted.checkInTime || '15:00',
         checkOutTime: extracted.checkOutTime || '11:00',
         checkInProcedure: extracted.checkInProcedure || null,
@@ -552,6 +557,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       const message = error?.message || "Échec de l'import depuis le texte";
       return res.status(400).json({ error: message });
+    }
+  });
+
+  app.get("/api/cleanings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const cleanings = await listCleaningsForUser(userId);
+      return res.json({ cleanings });
+    } catch (error: any) {
+      console.error("Failed to list cleanings:", error?.message || error);
+      return res.status(500).json({ error: "Impossible de récupérer les tâches de ménage", details: error?.message || "Erreur inconnue" });
+    }
+  });
+
+  const handleCleaningSync = async () => {
+    const result = await syncAirbnbCalendars();
+    return { success: true, ...result };
+  };
+
+  app.post("/api/cleanings/sync", isAuthenticated, async (req: any, res) => {
+    try {
+      const payload = await handleCleaningSync();
+      return res.json(payload);
+    } catch (error: any) {
+      console.error("Manual cleaning sync failed:", error?.message || error);
+      return res.status(500).json({ error: "Sync ménage impossible", details: error?.message || "Erreur inconnue" });
+    }
+  });
+
+  app.post("/api/cron/cleanings/sync", async (req: any, res) => {
+    try {
+      const cronSecret = process.env.CRON_SECRET;
+      if (cronSecret) {
+        const headerSecret = Array.isArray(req.headers["x-cron-secret"]) ? req.headers["x-cron-secret"][0] : req.headers["x-cron-secret"];
+        const providedSecret = headerSecret || req.body?.secret || (Array.isArray(req.query?.secret) ? req.query?.secret[0] : req.query?.secret);
+        if (providedSecret !== cronSecret) {
+          return res.status(401).json({ error: "Secret invalide" });
+        }
+      }
+      const payload = await handleCleaningSync();
+      return res.json(payload);
+    } catch (error: any) {
+      console.error("Cron cleaning sync failed:", error?.message || error);
+      return res.status(500).json({ error: "Sync ménage impossible", details: error?.message || "Erreur inconnue" });
+    }
+  });
+
+  app.post("/api/cleanings/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { status, notes } = req.body || {};
+      const allowedStatuses = new Set(["à faire", "en cours", "terminé"]);
+      if (!status || typeof status !== "string" || !allowedStatuses.has(status)) {
+        return res.status(400).json({ error: "Statut invalide" });
+      }
+
+      const updated = await markCleaningStatus(id, status, typeof notes === "string" ? notes : undefined);
+      if (!updated) {
+        return res.status(404).json({ error: "Tâche de ménage introuvable" });
+      }
+
+      return res.json({ cleaning: updated });
+    } catch (error: any) {
+      console.error("Failed to update cleaning status:", error?.message || error);
+      return res.status(500).json({ error: "Impossible de mettre à jour le statut", details: error?.message || "Erreur inconnue" });
+    }
+  });
+
+  app.post("/api/cleanings/:id/notify", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await notifyCleaningTask(id);
+      await markCleaningStatus(id, "en cours");
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error("Failed to notify cleaning staff:", error?.message || error);
+      return res.status(500).json({ error: "Notification impossible", details: error?.message || "Erreur inconnue" });
+    }
+  });
+
+  app.get("/api/cleanings/confirm", async (req, res) => {
+    try {
+      const cleaningId = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
+      if (!cleaningId || typeof cleaningId !== "string") {
+        return res.status(400).send("Lien de confirmation invalide");
+      }
+
+      const cleaning = await markCleaningStatus(cleaningId, "terminé");
+      if (!cleaning) {
+        return res.status(404).send("Tâche de ménage introuvable ou déjà confirmée.");
+      }
+
+      return res.status(200).send("✅ Ménage confirmé, merci !");
+    } catch (error: any) {
+      console.error("Cleaning confirmation failed:", error?.message || error);
+      return res.status(500).send("Une erreur est survenue. Veuillez contacter l'hôte.");
     }
   });
 

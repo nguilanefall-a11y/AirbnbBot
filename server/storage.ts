@@ -117,6 +117,8 @@ export class MemStorage implements IStorage {
       floor: "5ème étage avec ascenseur",
       doorCode: "A8B42",
       accessInstructions: "Entrer par la porte principale, prendre l'ascenseur jusqu'au 5ème étage. L'appartement est la porte à droite en sortant de l'ascenseur.",
+      icalUrl: null,
+      cleaningPersonId: null,
       checkInTime: "15:00",
       checkOutTime: "11:00",
       checkInProcedure: "Les clés sont dans une boîte sécurisée à l'entrée de l'immeuble. Code: 2842#. Une fois les clés récupérées, monter au 5ème étage. Un guide d'accueil vous attendra dans l'appartement avec toutes les informations.",
@@ -301,6 +303,8 @@ export class MemStorage implements IStorage {
       floor: insertProperty.floor ?? null,
       doorCode: insertProperty.doorCode ?? null,
       accessInstructions: insertProperty.accessInstructions ?? null,
+      icalUrl: insertProperty.icalUrl ?? null,
+      cleaningPersonId: insertProperty.cleaningPersonId ?? null,
       checkInTime: insertProperty.checkInTime ?? "15:00",
       checkOutTime: insertProperty.checkOutTime ?? "11:00",
       checkInProcedure: insertProperty.checkInProcedure ?? null,
@@ -611,8 +615,105 @@ export class PgStorage implements IStorage {
   }
 
   async getPropertyByAccessKey(accessKey: string): Promise<Property | undefined> {
-    const result = await this.ensureDb().select().from(properties).where(eq(properties.accessKey, accessKey)).limit(1);
-    return result[0];
+    const database = this.ensureDb();
+
+    const existing = await database
+      .select()
+      .from(properties)
+      .where(eq(properties.accessKey, accessKey))
+      .limit(1);
+
+    if (existing[0]) {
+      return existing[0];
+    }
+
+    if (accessKey !== "demo-paris-01") {
+      return undefined;
+    }
+
+    console.warn("Demo property missing in DB, creating default demo property...");
+
+    const defaultProperty: InsertProperty = {
+      name: "Appartement Élégant Paris 8e - Champs-Élysées",
+      description:
+        "Superbe appartement de standing dans le 8ème arrondissement, à deux pas des Champs-Élysées. Appartement lumineux et spacieux de 120m², entièrement rénové, avec vue sur les toits de Paris.",
+      address: "15 Avenue des Champs-Élysées, 75008 Paris",
+      floor: "5ème étage avec ascenseur",
+      doorCode: "A8B42",
+      accessInstructions:
+        "Entrer par la porte principale, prendre l'ascenseur jusqu'au 5ème étage. L'appartement est la porte à droite en sortant de l'ascenseur.",
+      icalUrl: null,
+      cleaningPersonId: null,
+      checkInTime: "15:00",
+      checkOutTime: "11:00",
+      checkInProcedure:
+        "Les clés sont dans une boîte sécurisée à l'entrée de l'immeuble (code 2842#). Une fois les clés récupérées, monter au 5ème étage.",
+      checkOutProcedure:
+        "Merci de remettre les clés dans la boîte sécurisée et de sortir les poubelles avant 11h.",
+      keyLocation: "Boîte à clés sécurisée à l'entrée (code 2842#)",
+      wifiName: "Paris8Elegant_WiFi",
+      wifiPassword: "ChampsElysees2024!",
+      amenities: [
+        "WiFi",
+        "Cuisine équipée",
+        "Climatisation",
+        "Machine Nespresso",
+      ],
+      kitchenEquipment: "Cuisine complète avec four, plaques, lave-vaisselle, micro-ondes et ustensiles.",
+      houseRules:
+        "Non fumeur. Respecter le calme après 22h. Pas de fêtes. Maximum 4 personnes.",
+      maxGuests: "4",
+      petsAllowed: false,
+      smokingAllowed: false,
+      partiesAllowed: false,
+      parkingInfo:
+        "Parking public payant à 100m (Parking Champs-Élysées). Quelques places gratuites le soir et le dimanche.",
+      publicTransport:
+        "Métro 1 (Champs-Élysées - Clemenceau) à 2 min, Métro 9 (Franklin Roosevelt) à 3 min.",
+      nearbyShops:
+        "Monoprix à 3 min, Carrefour Market à 5 min, nombreuses boutiques et pharmacies sur les Champs-Élysées.",
+      restaurants:
+        "Le Fouquet's, Ladurée, Le Relais de l'Entrecôte, Harry's New York Bar.",
+      hostName: "Sophie",
+      hostPhone: "+33 6 12 34 56 78",
+      emergencyContact: "Sophie (24/7) : +33 6 12 34 56 78",
+      heatingInstructions:
+        "Thermostat dans le salon. Tourner vers la droite pour augmenter la température.",
+      garbageInstructions:
+        "Tri : Jaune (recyclage), Vert (verre), Gris (déchets). Locaux poubelles dans la cour.",
+      applianceInstructions:
+        "TV 4K avec Netflix (compte invité). Machine Nespresso (capsules fournies). Lave-linge et sèche-linge dans la buanderie.",
+      additionalInfo:
+        "Guides touristiques, cartes de métro et astuces locales disponibles dans le salon.",
+      faqs:
+        "Q: Où est le WiFi ?\nR: Réseau 'Paris8Elegant_WiFi', mot de passe 'ChampsElysees2024!'.\n\nQ: Comment récupérer les clés ?\nR: Boîte sécurisée à l'entrée (code 2842#).\n\nQ: Où se garer ?\nR: Parking public Champs-Élysées (100m).",
+      lastImportedAt: null,
+    };
+
+    try {
+      const inserted = await database
+        .insert(properties)
+        .values({
+          ...defaultProperty,
+          userId: null,
+          accessKey,
+        })
+        .returning();
+
+      if (inserted[0]) {
+        console.log("✅ Demo property created in DB");
+        return inserted[0];
+      }
+    } catch (error: any) {
+      console.error("Failed to create demo property:", error?.message || error);
+    }
+
+    const fallback = await database
+      .select()
+      .from(properties)
+      .where(eq(properties.accessKey, accessKey))
+      .limit(1);
+    return fallback[0];
   }
 
   async getAllProperties(): Promise<Property[]> {

@@ -138,26 +138,41 @@ export const storage = createStorage();
 #### `server/db.ts`
 Remplacez tout le contenu par :
 ```typescript
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
+import { config } from "dotenv";
+import { resolve } from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+import pg from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 
-neonConfig.webSocketConstructor = ws;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+config({ path: resolve(__dirname, "..", ".env") });
 
-let pool: Pool | null = null;
+const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+let pool: pg.Pool | null = null;
 let db: ReturnType<typeof drizzle> | null = null;
 
-if (process.env.DATABASE_URL) {
+if (connectionString) {
   try {
-    pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    db = drizzle({ client: pool, schema });
+    const sslConfig = connectionString.includes("supabase.co")
+      ? { rejectUnauthorized: false }
+      : undefined;
+
+    const poolInstance = new pg.Pool({
+      connectionString,
+      ssl: sslConfig,
+    });
+
+    pool = poolInstance;
+    db = drizzle(poolInstance, { schema });
     console.log("✅ Database connection initialized");
   } catch (error) {
     console.error("⚠️  Failed to initialize database:", error);
   }
 } else {
-  console.warn("⚠️  DATABASE_URL not set, database features disabled");
+  console.warn("⚠️  No database connection string configured (SUPABASE_DB_URL or DATABASE_URL)");
 }
 
 export { pool, db };

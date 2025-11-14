@@ -10,26 +10,34 @@ const __dirname = dirname(__filename);
 // Load .env file
 config({ path: resolve(__dirname, "..", ".env") });
 
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
+import pg from "pg";
+let pool: pg.Pool | null = null;
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 
-neonConfig.webSocketConstructor = ws;
-
-let pool: Pool | null = null;
 let db: ReturnType<typeof drizzle> | null = null;
 
-if (process.env.DATABASE_URL) {
+const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+
+if (connectionString) {
   try {
-    pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    db = drizzle({ client: pool, schema });
+    const sslConfig = connectionString.includes("supabase.co")
+      ? { rejectUnauthorized: false }
+      : undefined;
+
+    const poolInstance = new pg.Pool({
+      connectionString,
+      ssl: sslConfig,
+    });
+
+    pool = poolInstance;
+    db = drizzle(poolInstance, { schema });
     console.log("✅ Database connection initialized");
   } catch (error) {
     console.error("⚠️  Failed to initialize database:", error);
   }
 } else {
-  console.warn("⚠️  DATABASE_URL not set, database features disabled");
+  console.warn("⚠️  No database connection string configured (SUPABASE_DB_URL or DATABASE_URL)");
 }
 
 export { pool, db };
