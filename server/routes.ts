@@ -4,15 +4,31 @@ import { WebSocketServer, WebSocket } from "ws";
 import Stripe from "stripe";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
-import { insertPropertySchema, insertConversationSchema, insertMessageSchema, insertMessageFeedbackSchema, insertResponseTemplateSchema, insertTeamMemberSchema, insertNotificationSchema } from "@shared/schema";
+import { insertPropertySchema, insertConversationSchema, insertMessageSchema, insertMessageFeedbackSchema, insertResponseTemplateSchema, insertTeamMemberSchema, insertNotificationSchema, insertPmsIntegrationSchema } from "@shared/schema";
 import { generateChatResponse, extractAirbnbInfo, extractAirbnbInfoFromText } from "./gemini";
 import { scrapeAirbnbWithPlaywright } from "./airbnb-playwright";
 import { listCleaningsForUser, syncAirbnbCalendars, markCleaningStatus, notifyCleaningTask } from "./cleaning-service";
+import { handleSmoobuWebhook } from "./smoobu-service";
+import { verifySmoobuWebhook } from "./smoobu-client";
 
 // Initialize Stripe (optional - only needed for subscription features)
 const stripe = process.env.STRIPE_SECRET_KEY 
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
+
+const smoobuConnectSchema = insertPmsIntegrationSchema
+  .pick({
+    apiKey: true,
+    webhookSecret: true,
+    settings: true,
+    isActive: true,
+  })
+  .partial({
+    apiKey: true,
+    webhookSecret: true,
+    settings: true,
+    isActive: true,
+  });
 
 // Middleware to check if user can create/modify properties
 // First property is FREE, additional properties require subscription
@@ -653,6 +669,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Cleaning confirmation failed:", error?.message || error);
       return res.status(500).send("Une erreur est survenue. Veuillez contacter l'hôte.");
+    }
+  });
+
+  // PMS Integrations - Smoobu
+  app.get("/api/integrations/smoobu", isAuthenticated, async (req: any, res) => {
+    try {
+      const integration = await storage.getPmsIntegration(req.user.id, "smoobu");
+      if (!integration) {
+        return res.json(null);
+      }
+
+      return res.json({
+        provider: integration.provider,
+        isActive: integration.isActive,
+        settings: integration.settings,
+        webhookSecretSet: Boolean(integration.webhookSecret),
+        hasApiKey: Boolean(integration.apiKey),
+        updatedAt: integration.updatedAt,
+      });
+    } catch (error: any) {
+      console.error("Failed to fetch Smoobu integration:", error?.message || error);
+      return res.status(500).json({ error: "Unable to load integration" });
+    }
+  });
+
+  app.post("/api/integrations/smoobu/connect", isAuthenticated, async (req: any, res) => {
+    try {
+      const body = req.body || {};
+      const parsed = smoobuConnectSchema.parse(body);
+      const existing = await storage.getPmsIntegration(req.user.id, "smoobu");
+      const apiKey = parsed.apiKey || existing?.apiKey;
+
+      if (!apiKey) {
+        return res.status(400).json({ error: "apiKey is required" });
+      }
+
+      const sanitizedSettings =
+        parsed.settings && typeof parsed.settings === "object"
+          ? { ...(existing?.settings || {}), ...parsed.settings }
+          : existing?.settings || {};
+
+      const integration = await storage.upsertPmsIntegration({
+        userId: req.user.id,
+        provider: "smoobu",
+        apiKey,
+        webhookSecret: parsed.webhookSecret ?? existing?.webhookSecret ?? null,
+        settings: sanitizedSettings,
+        isActive: typeof parsed.isActive === "boolean" ? parsed.isActive : existing?.isActive ?? true,
+      });
+
+      return res.json({
+        provider: integration.provider,
+        isActive: integration.isActive,
+        settings: integration.settings,
+        webhookSecretSet: Boolean(integration.webhookSecret),
+        hasApiKey: Boolean(integration.apiKey),
+        updatedAt: integration.updatedAt,
+      });
+    } catch (error: any) {
+      console.error("Failed to save Smoobu integration:", error?.message || error);
+      return res.status(500).json({ error: "Unable to save integration" });
+    }
+  });
+
+  app.post("/api/integrations/smoobu/webhook/:userId", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      if (!userId) {
+        return res.status(400).json({ error: "Missing userId" });
+      }
+
+      const integration = await storage.getPmsIntegration(userId, "smoobu");
+      if (!integration) {
+        return res.status(404).json({ error: "Integration not found" });
+      }
+
+      const providedSecret =
+        req.get("x-smoobu-secret") || (req.query.secret as string) || (req.body?.secret as string);
+      const expectedSecret = integration.webhookSecret || process.env.SMOOBU_WEBHOOK_SECRET;
+
+      if (!verifySmoobuWebhook(expectedSecret || undefined, providedSecret)) {
+        return res.status(401).json({ error: "Invalid webhook signature" });
+      }
+
+      const result = await handleSmoobuWebhook(req.body);
+      return res.json({ success: true, result });
+    } catch (error: any) {
+      console.error("Smoobu webhook processing failed:", error?.message || error);
+      return res.status(500).json({ error: "Failed to process webhook" });
     }
   });
 

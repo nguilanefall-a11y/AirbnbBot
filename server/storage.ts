@@ -15,6 +15,8 @@ import {
   type InsertTeamMember,
   type Notification,
   type InsertNotification,
+  type PmsIntegration,
+  type InsertPmsIntegration,
   users,
   properties,
   conversations,
@@ -23,6 +25,7 @@ import {
   responseTemplates,
   teamMembers,
   notifications,
+  pmsIntegrations,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -41,6 +44,7 @@ export interface IStorage {
   
   getProperty(id: string): Promise<Property | undefined>;
   getPropertyByAccessKey(accessKey: string): Promise<Property | undefined>;
+  getPropertyBySmoobuListingId(smoobuListingId: string): Promise<Property | undefined>;
   getAllProperties(): Promise<Property[]>;
   getPropertiesByUser(userId: string): Promise<Property[]>;
   createProperty(property: InsertProperty, userId: string): Promise<Property>;
@@ -48,6 +52,7 @@ export interface IStorage {
   deleteProperty(id: string): Promise<boolean>;
 
   getConversation(id: string): Promise<Conversation | undefined>;
+  getConversationByExternalId(externalId: string, source: string): Promise<Conversation | undefined>;
   getConversationsByProperty(propertyId: string): Promise<Conversation[]>;
   createConversation(conversation: InsertConversation): Promise<Conversation>;
   updateConversationTimestamp(id: string): Promise<void>;
@@ -91,6 +96,11 @@ export interface IStorage {
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<Notification | undefined>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
+
+  // PMS integrations
+  upsertPmsIntegration(integration: InsertPmsIntegration): Promise<PmsIntegration>;
+  getPmsIntegration(userId: string, provider: string): Promise<PmsIntegration | undefined>;
+  listPmsIntegrations(userId: string): Promise<PmsIntegration[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -98,12 +108,14 @@ export class MemStorage implements IStorage {
   private properties: Map<string, Property>;
   private conversations: Map<string, Conversation>;
   private messages: Map<string, Message>;
+  private integrations: Map<string, PmsIntegration>;
 
   constructor() {
     this.users = new Map();
     this.properties = new Map();
     this.conversations = new Map();
     this.messages = new Map();
+    this.integrations = new Map();
     
     const defaultPropertyId = randomUUID();
     const defaultAccessKey = "demo-paris-01";
@@ -111,6 +123,7 @@ export class MemStorage implements IStorage {
       id: defaultPropertyId,
       userId: null,
       accessKey: defaultAccessKey,
+      smoobuListingId: null,
       name: "Appartement Élégant Paris 8e - Champs-Élysées",
       description: "Superbe appartement de standing dans le 8ème arrondissement, à deux pas des Champs-Élysées. Appartement lumineux et spacieux de 120m², entièrement rénové, avec vue sur les toits de Paris. Idéal pour 4 personnes, avec toutes les commodités modernes. Proche des plus beaux monuments de Paris (Arc de Triomphe, Place de la Concorde, Grand Palais).",
       address: "15 Avenue des Champs-Élysées, 75008 Paris",
@@ -278,6 +291,11 @@ export class MemStorage implements IStorage {
     return found;
   }
 
+  async getPropertyBySmoobuListingId(smoobuListingId: string): Promise<Property | undefined> {
+    if (!smoobuListingId) return undefined;
+    return Array.from(this.properties.values()).find(p => p.smoobuListingId === smoobuListingId);
+  }
+
   async getAllProperties(): Promise<Property[]> {
     return Array.from(this.properties.values()).sort((a, b) => 
       b.createdAt.getTime() - a.createdAt.getTime()
@@ -297,6 +315,7 @@ export class MemStorage implements IStorage {
       id,
       userId,
       accessKey,
+      smoobuListingId: insertProperty.smoobuListingId ?? null,
       name: insertProperty.name,
       description: insertProperty.description,
       address: insertProperty.address,
@@ -355,6 +374,13 @@ export class MemStorage implements IStorage {
     return this.conversations.get(id);
   }
 
+  async getConversationByExternalId(externalId: string, source: string): Promise<Conversation | undefined> {
+    if (!externalId) return undefined;
+    return Array.from(this.conversations.values()).find(
+      (c) => c.externalId === externalId && (source ? c.source === source : true),
+    );
+  }
+
   async getConversationsByProperty(propertyId: string): Promise<Conversation[]> {
     return Array.from(this.conversations.values())
       .filter(c => c.propertyId === propertyId)
@@ -367,6 +393,8 @@ export class MemStorage implements IStorage {
     const conversation: Conversation = { 
       ...insertConversation, 
       id,
+      externalId: insertConversation.externalId ?? null,
+      source: insertConversation.source ?? null,
       createdAt: now,
       lastMessageAt: now
     };
@@ -395,8 +423,12 @@ export class MemStorage implements IStorage {
       conversationId: insertMessage.conversationId,
       content: insertMessage.content,
       isBot: insertMessage.isBot ?? false,
+      direction: insertMessage.direction ?? null,
+      senderName: insertMessage.senderName ?? null,
       language: insertMessage.language ?? null,
       category: insertMessage.category ?? null,
+      externalId: insertMessage.externalId ?? null,
+      metadata: insertMessage.metadata ?? null,
       createdAt: new Date()
     };
     this.messages.set(id, message);
@@ -497,6 +529,34 @@ export class MemStorage implements IStorage {
 
   async markAllNotificationsAsRead(userId: string): Promise<void> {
     // No-op for MemStorage
+  }
+
+  async upsertPmsIntegration(integration: InsertPmsIntegration): Promise<PmsIntegration> {
+    const key = `${integration.userId}:${integration.provider}`;
+    const now = new Date();
+    const existing = this.integrations.get(key);
+    const record: PmsIntegration = {
+      id: existing?.id ?? randomUUID(),
+      userId: integration.userId,
+      provider: integration.provider,
+      apiKey: integration.apiKey,
+      webhookSecret: integration.webhookSecret ?? existing?.webhookSecret ?? null,
+      settings: integration.settings ?? existing?.settings ?? {},
+      isActive: integration.isActive ?? existing?.isActive ?? true,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.integrations.set(key, record);
+    return record;
+  }
+
+  async getPmsIntegration(userId: string, provider: string): Promise<PmsIntegration | undefined> {
+    const key = `${userId}:${provider}`;
+    return this.integrations.get(key);
+  }
+
+  async listPmsIntegrations(userId: string): Promise<PmsIntegration[]> {
+    return Array.from(this.integrations.values()).filter((integration) => integration.userId === userId);
   }
 }
 
@@ -611,6 +671,16 @@ export class PgStorage implements IStorage {
   // Property operations
   async getProperty(id: string): Promise<Property | undefined> {
     const result = await this.ensureDb().select().from(properties).where(eq(properties.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getPropertyBySmoobuListingId(smoobuListingId: string): Promise<Property | undefined> {
+    if (!smoobuListingId) return undefined;
+    const result = await this.ensureDb()
+      .select()
+      .from(properties)
+      .where(eq(properties.smoobuListingId, smoobuListingId))
+      .limit(1);
     return result[0];
   }
 
@@ -748,6 +818,20 @@ export class PgStorage implements IStorage {
   // Conversation operations
   async getConversation(id: string): Promise<Conversation | undefined> {
     const result = await this.ensureDb().select().from(conversations).where(eq(conversations.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getConversationByExternalId(externalId: string, source: string): Promise<Conversation | undefined> {
+    if (!externalId) return undefined;
+    const conditions = [eq(conversations.externalId, externalId)];
+    if (source) {
+      conditions.push(eq(conversations.source, source));
+    }
+    const result = await this.ensureDb()
+      .select()
+      .from(conversations)
+      .where(and(...conditions))
+      .limit(1);
     return result[0];
   }
 
@@ -1054,6 +1138,56 @@ export class PgStorage implements IStorage {
     await this.ensureDb().update(notifications)
       .set({ isRead: true, readAt: new Date() })
       .where(eq(notifications.userId, userId));
+  }
+
+  // PMS integrations
+  async upsertPmsIntegration(integration: InsertPmsIntegration): Promise<PmsIntegration> {
+    const database = this.ensureDb();
+    const existing = await database
+      .select()
+      .from(pmsIntegrations)
+      .where(and(eq(pmsIntegrations.userId, integration.userId), eq(pmsIntegrations.provider, integration.provider)))
+      .limit(1);
+
+    if (existing[0]) {
+      const result = await database
+        .update(pmsIntegrations)
+        .set({
+          apiKey: integration.apiKey,
+          webhookSecret: integration.webhookSecret ?? existing[0].webhookSecret,
+          settings: integration.settings ?? existing[0].settings ?? {},
+          isActive: integration.isActive ?? existing[0].isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(pmsIntegrations.id, existing[0].id))
+        .returning();
+      return result[0];
+    }
+
+    const result = await database
+      .insert(pmsIntegrations)
+      .values({
+        ...integration,
+      })
+      .returning();
+    return result[0];
+  }
+
+  async getPmsIntegration(userId: string, provider: string): Promise<PmsIntegration | undefined> {
+    const result = await this.ensureDb()
+      .select()
+      .from(pmsIntegrations)
+      .where(and(eq(pmsIntegrations.userId, userId), eq(pmsIntegrations.provider, provider)))
+      .limit(1);
+    return result[0];
+  }
+
+  async listPmsIntegrations(userId: string): Promise<PmsIntegration[]> {
+    return await this.ensureDb()
+      .select()
+      .from(pmsIntegrations)
+      .where(eq(pmsIntegrations.userId, userId))
+      .orderBy(desc(pmsIntegrations.createdAt));
   }
 }
 

@@ -52,6 +52,7 @@ export const properties = pgTable("properties", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
   accessKey: varchar("access_key").notNull().unique().default(sql`substring(md5(random()::text), 1, 12)`),
+  smoobuListingId: varchar("smoobu_listing_id"),
   name: text("name").notNull(),
   description: text("description").notNull(),
   
@@ -118,19 +119,29 @@ export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   propertyId: varchar("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
   guestName: text("guest_name").notNull(),
+  externalId: varchar("external_id"),
+  source: varchar("source"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_conversations_external_source").on(table.externalId, table.source),
+]);
 
 export const messages = pgTable("messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   conversationId: varchar("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   isBot: boolean("is_bot").notNull().default(false),
+  direction: varchar("direction"),
+  senderName: text("sender_name"),
   language: varchar("language"), // Langue détectée du message
   category: varchar("category"), // Catégorie de la question (WiFi, Check-in, etc.)
+  externalId: varchar("external_id"),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_messages_external_id").on(table.externalId),
+]);
 
 // Table pour le feedback sur les messages
 export const messageFeedback = pgTable("message_feedback", {
@@ -207,6 +218,20 @@ export const cleanings = pgTable("cleanings", {
 }, (table) => [
   uniqueIndex("IDX_cleanings_property_date").on(table.propertyId, table.dateMenage),
   index("IDX_cleanings_status").on(table.status),
+]);
+
+export const pmsIntegrations = pgTable("pms_integrations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: varchar("provider").notNull(),
+  apiKey: text("api_key").notNull(),
+  webhookSecret: varchar("webhook_secret"),
+  settings: jsonb("settings").default(sql`'{}'::jsonb`),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("IDX_pms_user_provider").on(table.userId, table.provider),
 ]);
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -297,6 +322,12 @@ export const insertCleaningSchema = createInsertSchema(cleanings).omit({
   updatedAt: true,
 });
 
+export const insertPmsIntegrationSchema = createInsertSchema(pmsIntegrations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type Property = typeof properties.$inferSelect;
 
@@ -323,6 +354,9 @@ export type CleaningPerson = typeof cleaningPersons.$inferSelect;
 
 export type InsertCleaning = z.infer<typeof insertCleaningSchema>;
 export type Cleaning = typeof cleanings.$inferSelect;
+
+export type InsertPmsIntegration = z.infer<typeof insertPmsIntegrationSchema>;
+export type PmsIntegration = typeof pmsIntegrations.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type RegisterUser = z.infer<typeof registerSchema>;
