@@ -1,0 +1,28 @@
+# FastAPI
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+
+# Playwright
+playwright==1.40.0
+
+# HTTP requests
+requests==2.31.0
+
+# Logging
+python-json-logger==2.0.7
+
+# Utils
+python-dotenv==1.0.0
+
+# AI (Gemini)
+google-generativeai==0.3.2
+
+# Async HTTP (pour les workers async)
+aiohttp==3.9.1
+httpx==0.25.2

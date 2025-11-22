@@ -1,0 +1,55 @@
+{
+  "apps": [
+    {
+      "name": "airbnb-bot-api",
+      "script": "uvicorn",
+      "args": "src.api.main:app --host 0.0.0.0 --port 8000",
+      "cwd": "/app",
+      "env": {
+        "ENV_FILE": ".env"
+      },
+      "error_file": "./logs/api-error.log",
+      "out_file": "./logs/api-out.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "watch": false
+    },
+    {
+      "name": "airbnb-bot-sync",
+      "script": "python",
+      "args": "-m src.workers.sync_worker",
+      "cwd": "/app",
+      "env": {
+        "ENV_FILE": ".env"
+      },
+      "error_file": "./logs/sync-error.log",
+      "out_file": "./logs/sync-out.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "watch": false
+    },
+    {
+      "name": "airbnb-bot-send",
+      "script": "python",
+      "args": "-m src.workers.send_worker",
+      "cwd": "/app",
+      "env": {
+        "ENV_FILE": ".env"
+      },
+      "error_file": "./logs/send-error.log",
+      "out_file": "./logs/send-out.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "watch": false
+    }
+  ]
+}
