@@ -1,0 +1,5 @@
+{
+  "npm.runSilent": false,
+  "terminal.integrated.defaultProfile.osx": "zsh"
+}
+
