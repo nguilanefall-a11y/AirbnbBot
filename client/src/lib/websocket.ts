@@ -13,12 +13,22 @@ export class ChatWebSocket {
   connect() {
     if (this.ws && this.isConnected) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const hostname = (window.location && window.location.hostname) || 'localhost';
-    const port = (window.location && (window.location as any).port) || '5000';
-    const host = `${hostname}:${port}`;
-    const wsUrl = `${protocol}//${host}/ws`;
+    // Use environment variable if available, otherwise construct from window.location
+    let wsUrl: string;
+    if (import.meta.env.VITE_WS_URL) {
+      wsUrl = import.meta.env.VITE_WS_URL;
+    } else {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const hostname = (window.location && window.location.hostname) || 'localhost';
+      // Handle empty port (production) or explicit port
+      const port = (window.location && window.location.port) 
+        ? window.location.port 
+        : (window.location.protocol === "https:" ? "" : "5000");
+      const host = port ? `${hostname}:${port}` : hostname;
+      wsUrl = `${protocol}//${host}/ws`;
+    }
 
+    console.log("Connecting to WebSocket:", wsUrl);
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {

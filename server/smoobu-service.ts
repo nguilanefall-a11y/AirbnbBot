@@ -5,6 +5,7 @@ import {
   fetchSmoobuBooking,
   type SmoobuWebhookPayload,
 } from "./smoobu-client";
+import { routeAndSendMessage, type MessageContext } from "./message-router";
 
 function shouldAutoReply(settings: Record<string, any> | null | undefined): boolean {
   if (!settings) return true;
@@ -74,32 +75,40 @@ export async function handleSmoobuWebhook(payload: SmoobuWebhookPayload) {
     return { handled: true, reason: "manual_review" };
   }
 
-  const aiResponse = await generateChatResponse(data.body, property);
-
-  await storage.createMessage({
+  // Utiliser le routeur hybride (Smoobu en priorité, Playwright en fallback)
+  const messageContext: MessageContext = {
+    property,
     conversationId: conversation.id,
-    content: aiResponse,
-    isBot: true,
-    direction: "outbound",
-    senderName: property.hostName || "Coach IA",
-    language: data.language || null,
-    metadata: {
-      autoReply: true,
-      channel: source,
-    },
-  });
-
-  await sendSmoobuMessage(integration.apiKey, {
+    guestName: data.guestName || "Voyageur",
+    guestMessage: data.body,
     bookingId,
-    body: aiResponse,
-    channel: source,
-  });
+    language: data.language || null,
+  };
 
-  return { handled: true, reason: "auto_reply_sent" };
+  const sendResult = await routeAndSendMessage(messageContext, property.userId!);
+
+  if (sendResult.success) {
+    return { 
+      handled: true, 
+      reason: `auto_reply_sent_via_${sendResult.channel}`,
+      channel: sendResult.channel,
+    };
+  } else {
+    // Si l'envoi a échoué, marquer pour révision manuelle
+    // Note: updateConversationStatus n'existe pas encore, on peut l'ajouter si nécessaire
+    // Pour l'instant, on retourne juste l'erreur
+    console.error(`Failed to send message via ${sendResult.channel}:`, sendResult.error);
+    return { 
+      handled: false, 
+      reason: `send_failed_${sendResult.channel}`,
+      error: sendResult.error,
+    };
+  }
 }
 
 export async function fetchSmoobuContext(apiKey: string, bookingId: string | number) {
   const booking = await fetchSmoobuBooking(apiKey, bookingId);
   return booking;
 }
+
 

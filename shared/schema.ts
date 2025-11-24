@@ -33,6 +33,11 @@ export const users = pgTable("users", {
   trialEndsAt: timestamp("trial_ends_at"),
   activePropertyCount: varchar("active_property_count").default("0"),
   
+  // Co-host credentials (chiffrés)
+  airbnbCohostEmail: text("airbnb_cohost_email"),
+  airbnbCohostCookies: text("airbnb_cohost_cookies"), // Cookies de session (chiffrés)
+  airbnbCohostLastSync: timestamp("airbnb_cohost_last_sync"),
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

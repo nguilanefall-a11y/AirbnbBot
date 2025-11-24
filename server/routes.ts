@@ -10,6 +10,7 @@ import { scrapeAirbnbWithPlaywright } from "./airbnb-playwright";
 import { listCleaningsForUser, syncAirbnbCalendars, markCleaningStatus, notifyCleaningTask } from "./cleaning-service";
 import { handleSmoobuWebhook } from "./smoobu-service";
 import { verifySmoobuWebhook } from "./smoobu-client";
+import { sendMessageAsCoHost } from "./airbnb-cohost-playwright";
 
 // Initialize Stripe (optional - only needed for subscription features)
 const stripe = process.env.STRIPE_SECRET_KEY 
@@ -29,6 +30,137 @@ const smoobuConnectSchema = insertPmsIntegrationSchema
     settings: true,
     isActive: true,
   });
+
+function extractAirbnbListingIdFromPath(path: string): string | null {
+  const match = path.match(/\/rooms\/(\d+)/);
+  return match ? match[1] : null;
+}
+
+function extractAirbnbListingId(input: string | undefined | null): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  try {
+    const url = trimmed.startsWith("http") ? new URL(trimmed) : new URL(`https://${trimmed}`);
+    const pathId = extractAirbnbListingIdFromPath(url.pathname);
+    if (pathId) return pathId;
+  } catch {
+    // ignore URL parse errors and fall back to regex
+  }
+
+  // Fallback: try to extract numeric ID directly
+  const numericMatch = trimmed.match(/\d{6,}/);
+  return numericMatch ? numericMatch[0] : null;
+}
+
+/**
+ * Fonction utilitaire pour gérer l'envoi de messages (sur Airbnb si nécessaire) et la génération de réponse IA
+ * Utilisée à la fois par la route REST et par le WebSocket
+ */
+async function processUserMessage(conversationId: string, content: string): Promise<{
+  userMessage: any;
+  botMessage?: any;
+  airbnbSent?: boolean;
+  airbnbError?: string;
+}> {
+  // Créer le message utilisateur
+  const userMessage = await storage.createMessage({
+    conversationId,
+    content,
+    isBot: false,
+  });
+
+  // Récupérer la conversation
+  const conversation = await storage.getConversation(conversationId);
+  if (!conversation) {
+    return { userMessage };
+  }
+
+  // Si c'est une conversation Airbnb, envoyer le message sur Airbnb
+  let airbnbSent = false;
+  let airbnbError: string | undefined;
+  
+  if (conversation.externalId && conversation.source === "airbnb-cohost") {
+    const property = await storage.getProperty(conversation.propertyId);
+    if (property && property.userId) {
+      const user = await storage.getUser(property.userId);
+      if (user?.airbnbCohostCookies) {
+        try {
+          console.log(`📤 Envoi message sur Airbnb (conversation: ${conversation.externalId})`);
+          const sendResult = await sendMessageAsCoHost(
+            conversation.externalId,
+            content,
+            user.airbnbCohostCookies,
+          );
+          
+          if (sendResult.success && sendResult.messageId) {
+            airbnbSent = true;
+            console.log(`✅ Message envoyé sur Airbnb (ID: ${sendResult.messageId})`);
+          } else {
+            airbnbError = sendResult.error || "Erreur inconnue";
+            console.warn("❌ Échec envoi message Airbnb:", airbnbError);
+          }
+        } catch (error: any) {
+          airbnbError = error?.message || "Erreur lors de l'envoi";
+          console.error("❌ Erreur envoi message Airbnb:", airbnbError);
+        }
+      } else {
+        airbnbError = "Cookies co-hôte non configurés";
+        console.warn("⚠️ Cookies co-hôte non configurés pour l'utilisateur");
+      }
+    }
+  }
+
+  // Générer une réponse IA automatique pour toutes les conversations Airbnb
+  const property = await storage.getProperty(conversation.propertyId);
+  if (property) {
+    try {
+      console.log(`🤖 Génération réponse IA pour: "${conversation.guestName}"...`);
+      const aiResponse = await generateChatResponse(content, property);
+      
+      const botMessage = await storage.createMessage({
+        conversationId,
+        content: aiResponse,
+        isBot: true,
+      });
+
+      console.log(`✅ Réponse IA générée: "${aiResponse.substring(0, 50)}..."`);
+
+      // Si c'est une conversation Airbnb, envoyer aussi la réponse IA sur Airbnb
+      if (conversation.externalId && conversation.source === "airbnb-cohost" && property.userId) {
+        const user = await storage.getUser(property.userId);
+        if (user?.airbnbCohostCookies) {
+          try {
+            console.log(`📤 Envoi réponse IA sur Airbnb...`);
+            const sendResult = await sendMessageAsCoHost(
+              conversation.externalId,
+              aiResponse,
+              user.airbnbCohostCookies,
+            );
+            
+            if (sendResult.success) {
+              console.log("✅ Réponse IA envoyée sur Airbnb avec succès");
+            } else {
+              console.error(`❌ Erreur envoi réponse IA Airbnb: ${sendResult.error}`);
+            }
+          } catch (error: any) {
+            console.error("❌ Erreur envoi réponse IA Airbnb:", error?.message);
+          }
+        } else {
+          console.warn("⚠️ Cookies co-hôte non configurés, réponse IA non envoyée sur Airbnb");
+        }
+      }
+
+      return { userMessage, botMessage, airbnbSent, airbnbError };
+    } catch (error: any) {
+      console.error("❌ Erreur génération réponse IA:", error?.message);
+      return { userMessage, airbnbSent, airbnbError };
+    }
+  }
+
+  return { userMessage, airbnbSent, airbnbError };
+}
 
 // Middleware to check if user can create/modify properties
 // First property is FREE, additional properties require subscription
@@ -407,6 +539,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const listingIdFromUrl = extractAirbnbListingIdFromPath(parsedUrl.pathname);
+
       const safe: any = {
         name: extracted.name || "Nouvelle Propriété",
         description: extracted.description || "Description à compléter",
@@ -443,6 +577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         additionalInfo: extracted.additionalInfo || null,
         faqs: extracted.faqs || null,
         lastImportedAt: new Date(),
+        smoobuListingId: listingIdFromUrl || extracted.smoobuListingId || null,
       };
 
       // Validate against schema (required fields ensured above)
@@ -985,28 +1120,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/messages", async (req, res) => {
     try {
       const validatedData = insertMessageSchema.parse(req.body);
-      const message = await storage.createMessage(validatedData);
       
-      // If it's a user message, generate AI response
+      // Si c'est un message utilisateur (pas bot), utiliser la fonction utilitaire
       if (!validatedData.isBot) {
-        const conversation = await storage.getConversation(validatedData.conversationId);
-        if (conversation) {
-          const property = await storage.getProperty(conversation.propertyId);
-          if (property) {
-            const aiResponse = await generateChatResponse(validatedData.content, property);
-            const botMessage = await storage.createMessage({
-              conversationId: validatedData.conversationId,
-              content: aiResponse,
-              isBot: true,
-            });
-            
-            // Return both messages
-            return res.status(201).json({ userMessage: message, botMessage });
-          }
+        const result = await processUserMessage(validatedData.conversationId, validatedData.content);
+        
+        // Retourner le résultat avec les informations d'envoi Airbnb
+        const response: any = { userMessage: result.userMessage };
+        if (result.botMessage) {
+          response.botMessage = result.botMessage;
         }
+        if (result.airbnbSent !== undefined) {
+          response.airbnbSent = result.airbnbSent;
+        }
+        if (result.airbnbError) {
+          response.airbnbError = result.airbnbError;
+        }
+        
+        return res.status(201).json(response);
+      } else {
+        // Message bot : créer directement
+        const message = await storage.createMessage(validatedData);
+        return res.status(201).json({ userMessage: message });
       }
-      
-      res.status(201).json({ userMessage: message });
     } catch (error) {
       console.error("Error creating message:", error);
       res.status(400).json({ error: "Failed to create message" });
@@ -1244,6 +1380,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Co-Host Configuration Routes
+  app.get("/api/cohost/config", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Retourner seulement si configuré (sans les valeurs sensibles)
+      res.json({
+        configured: Boolean(user.airbnbCohostEmail || user.airbnbCohostCookies),
+        hasEmail: Boolean(user.airbnbCohostEmail),
+        hasCookies: Boolean(user.airbnbCohostCookies),
+        lastSync: user.airbnbCohostLastSync || null,
+      });
+    } catch (error: any) {
+      console.error("Error fetching co-host config:", error);
+      res.status(500).json({ error: error?.message || "Failed to fetch co-host config" });
+    }
+  });
+
+  app.post("/api/cohost/config", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { email, cookies } = req.body;
+
+      if (!email && !cookies) {
+        return res.status(400).json({ 
+          error: "Email ou cookies requis" 
+        });
+      }
+
+      // Mettre à jour les credentials dans la DB
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      await storage.upsertUser({
+        id: userId,
+        email: user.email,
+        password: user.password,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        airbnbCohostEmail: email || user.airbnbCohostEmail,
+        airbnbCohostCookies: cookies || user.airbnbCohostCookies,
+      });
+
+      res.json({ 
+        success: true,
+        message: "Configuration co-hôte sauvegardée",
+      });
+    } catch (error: any) {
+      console.error("Error saving co-host config:", error);
+      res.status(500).json({ error: error?.message || "Failed to save co-host config" });
+    }
+  });
+
+  // Co-Host Sync Routes (Légal - utilise le compte co-hôte)
+  app.post("/api/sync/cohost", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { syncAllCoHostListings } = await import("./cohost-sync-service");
+      
+      // Récupérer les credentials depuis la DB de l'utilisateur
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const credentials = {
+        email: user.airbnbCohostEmail || process.env.AIRBNB_COHOST_EMAIL,
+        password: req.body.password || process.env.AIRBNB_COHOST_PASSWORD, // Password seulement depuis body (pas stocké)
+        cookies: user.airbnbCohostCookies || process.env.AIRBNB_COHOST_COOKIES,
+      };
+
+      if (!credentials.cookies && (!credentials.email || !credentials.password)) {
+        return res.status(400).json({ 
+          error: "Configuration co-hôte requise. Veuillez configurer dans les paramètres." 
+        });
+      }
+
+      const result = await syncAllCoHostListings(userId, credentials);
+
+      // Mettre à jour la date de dernière synchronisation
+      await storage.upsertUser({
+        id: userId,
+        email: user.email,
+        password: user.password,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        airbnbCohostLastSync: new Date(),
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error syncing co-host listings:", error);
+      res.status(500).json({ error: error?.message || "Failed to sync co-host listings" });
+    }
+  });
+
   // Team routes
   app.get("/api/team/members", isAuthenticated, async (req: any, res) => {
     try {
@@ -1313,34 +1550,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (payload.type === "chat_message") {
           const { conversationId, content } = payload;
           
-          // Save user message
-          const userMessage = await storage.createMessage({
-            conversationId,
-            content,
-            isBot: false,
-          });
+          // Utiliser la fonction utilitaire pour gérer l'envoi (Airbnb si nécessaire) et la réponse IA
+          const result = await processUserMessage(conversationId, content);
           
-          // Get conversation and property
-          const conversation = await storage.getConversation(conversationId);
-          if (conversation) {
-            const property = await storage.getProperty(conversation.propertyId);
-            if (property) {
-              // Generate AI response
-              const aiResponse = await generateChatResponse(content, property);
-              const botMessage = await storage.createMessage({
-                conversationId,
-                content: aiResponse,
-                isBot: true,
-              });
-              
-              // Send both messages back
-              ws.send(JSON.stringify({
-                type: "messages",
-                userMessage,
-                botMessage
-              }));
-            }
+          // Envoyer les messages au client
+          const response: any = {
+            type: "messages",
+            userMessage: result.userMessage,
+          };
+          
+          if (result.botMessage) {
+            response.botMessage = result.botMessage;
           }
+          
+          if (result.airbnbSent !== undefined) {
+            response.airbnbSent = result.airbnbSent;
+          }
+          
+          if (result.airbnbError) {
+            response.airbnbError = result.airbnbError;
+          }
+          
+          ws.send(JSON.stringify(response));
         }
       } catch (error) {
         console.error("WebSocket error:", error);

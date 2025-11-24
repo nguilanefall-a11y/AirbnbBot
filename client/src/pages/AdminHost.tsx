@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Download, Sparkles, DollarSign, MapPin, User as UserIcon, Clock, Wifi, Shield, Info, Utensils, Thermometer, BarChart3 } from "lucide-react";
-import type { Property, InsertProperty, User } from "@shared/schema";
+import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Download, Sparkles, DollarSign, MapPin, User as UserIcon, Clock, Wifi, Shield, Info, Utensils, Thermometer, BarChart3, ExternalLink } from "lucide-react";
+import type { Property, InsertProperty, User, Conversation, Message } from "@shared/schema";
 import { Link, useLocation } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Settings as SettingsIcon } from "lucide-react";
 import Footer from "@/components/Footer";
+import { chatWebSocket } from "@/lib/websocket";
 
 export default function AdminHost() {
   const { toast } = useToast();
@@ -36,10 +37,19 @@ export default function AdminHost() {
   const [copied, setCopied] = useState(false);
   const [formData, setFormData] = useState<Partial<InsertProperty>>({});
   const [airbnbUrl, setAirbnbUrl] = useState("");
+  const [airbnbLinkInput, setAirbnbLinkInput] = useState("");
+  const [airbnbLinkError, setAirbnbLinkError] = useState<string | null>(null);
+  const [isPropertySyncing, setIsPropertySyncing] = useState(false);
+  const [propertySyncResult, setPropertySyncResult] = useState<any>(null);
   const [amenityInput, setAmenityInput] = useState("");
   const [importedFields, setImportedFields] = useState<Set<string>>(new Set());
   const [lastImportedAt, setLastImportedAt] = useState<Date | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string>("");
+  const [messageInput, setMessageInput] = useState("");
+  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   const { data: currentUser } = useQuery<User>({
     queryKey: ["/api/user"],
@@ -48,6 +58,21 @@ export default function AdminHost() {
   const { data: properties, isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
+
+  const { data: conversations = [] } = useQuery<Conversation[]>({
+    queryKey: ["/api/conversations/property", selectedProperty?.id],
+    enabled: Boolean(selectedProperty?.id),
+  });
+
+  const { data: messages = [] } = useQuery<Message[]>({
+    queryKey: ["/api/messages", activeConversationId],
+    enabled: Boolean(activeConversationId),
+  });
+
+  const activeConversation = useMemo(
+    () => conversations.find((conv) => conv.id === activeConversationId),
+    [conversations, activeConversationId],
+  );
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<InsertProperty> }) => {
@@ -62,6 +87,134 @@ export default function AdminHost() {
       });
     },
   });
+
+  const formatAirbnbListingUrl = (listingId: string) => `https://www.airbnb.com/rooms/${listingId}`;
+
+  const extractListingIdFromInput = (value: string): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    try {
+      const url = trimmed.startsWith("http") ? new URL(trimmed) : new URL(`https://${trimmed}`);
+      const match = url.pathname.match(/\/rooms\/(\d+)/);
+      if (match) return match[1];
+    } catch {
+      const pathMatch = trimmed.match(/\/rooms\/(\d+)/);
+      if (pathMatch) return pathMatch[1];
+    }
+
+    const idMatch = trimmed.match(/(\d{4,})/);
+    return idMatch ? idMatch[1] : null;
+  };
+
+  const handleAirbnbLinkSave = () => {
+    if (!selectedProperty) return;
+    const trimmed = airbnbLinkInput.trim();
+
+    if (!trimmed) {
+      setAirbnbLinkError(null);
+      handleAutoSave("smoobuListingId", null as any);
+      toast({
+        title: "Lien supprimé",
+        description: "La propriété n'est plus associée à une annonce Airbnb.",
+      });
+      return;
+    }
+
+    const listingId = extractListingIdFromInput(trimmed);
+    if (!listingId) {
+      setAirbnbLinkError("Lien Airbnb invalide. Exemple : https://www.airbnb.fr/rooms/12345678");
+      return;
+    }
+
+    setAirbnbLinkError(null);
+    const normalizedUrl = formatAirbnbListingUrl(listingId);
+    setAirbnbLinkInput(normalizedUrl);
+    handleAutoSave("smoobuListingId", listingId);
+    toast({
+      title: "Annonce reliée",
+      description: `Synchronisation activée pour Airbnb #${listingId}.`,
+    });
+    handlePropertySync();
+  };
+
+  const handleOpenAirbnbLink = () => {
+    const listingId = formData.smoobuListingId;
+    if (!listingId) return;
+    window.open(formatAirbnbListingUrl(listingId), "_blank", "noopener,noreferrer");
+  };
+
+  const handlePropertySync = async () => {
+    setIsPropertySyncing(true);
+    setPropertySyncResult(null);
+    try {
+      const res = await apiRequest("POST", "/api/sync/cohost", {});
+      const data = await res.json();
+      setPropertySyncResult(data);
+      toast({
+        title: "Synchronisation lancée",
+        description: "Les conversations Airbnb sont mises à jour.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur de synchronisation",
+        description: error?.message || "Impossible de synchroniser maintenant",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPropertySyncing(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!activeConversationId || !messageInput.trim()) return;
+    setIsSendingMessage(true);
+    const trimmed = messageInput.trim();
+
+    try {
+      if (chatWebSocket.getConnectionStatus()) {
+        chatWebSocket.sendMessage(activeConversationId, trimmed);
+        setMessageInput("");
+      } else {
+        const response = await apiRequest("POST", "/api/messages", {
+          conversationId: activeConversationId,
+          content: trimmed,
+          isBot: false,
+        });
+        const data = await response.json();
+        
+        // Vérifier si le message a été envoyé sur Airbnb
+        if (data.airbnbError) {
+          toast({
+            title: "Message sauvegardé",
+            description: `Le message n'a pas pu être envoyé sur Airbnb : ${data.airbnbError}`,
+            variant: "destructive",
+          });
+        } else if (data.airbnbSent) {
+          toast({
+            title: "Message envoyé",
+            description: "Le message a été envoyé sur Airbnb avec succès",
+            variant: "default",
+          });
+        }
+        
+        setMessageInput("");
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/messages", activeConversationId] });
+      if (selectedProperty?.id) {
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations/property", selectedProperty.id] });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erreur d'envoi",
+        description: error?.message || "Impossible d'envoyer le message",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
 
   const importAirbnbMutation = useMutation({
     mutationFn: async (url: string) => {
@@ -89,6 +242,12 @@ export default function AdminHost() {
       
       setIsImportDialogOpen(false);
       setAirbnbUrl("");
+      if (data?.smoobuListingId) {
+        setAirbnbLinkInput(formatAirbnbListingUrl(data.smoobuListingId));
+      } else if (airbnbUrl) {
+        setAirbnbLinkInput(airbnbUrl);
+      }
+      setAirbnbLinkError(null);
       toast({
         title: "Import réussi !",
         description: "Les informations ont été importées et sauvegardées automatiquement",
@@ -111,6 +270,16 @@ export default function AdminHost() {
       setSelectedProperty(properties[0]);
     }
   }, [properties, selectedProperty]);
+
+  useEffect(() => {
+    if (selectedProperty && conversations.length > 0) {
+      if (!activeConversationId || !conversations.some((c) => c.id === activeConversationId)) {
+        setActiveConversationId(conversations[0].id);
+      }
+    } else {
+      setActiveConversationId("");
+    }
+  }, [selectedProperty, conversations, activeConversationId]);
 
   useEffect(() => {
     if (selectedProperty) {
@@ -147,12 +316,51 @@ export default function AdminHost() {
         applianceInstructions: selectedProperty.applianceInstructions || "",
         additionalInfo: selectedProperty.additionalInfo || "",
         faqs: selectedProperty.faqs || "",
+        smoobuListingId: selectedProperty.smoobuListingId || "",
       });
+      setAirbnbLinkInput(
+        selectedProperty.smoobuListingId
+          ? formatAirbnbListingUrl(selectedProperty.smoobuListingId)
+          : "",
+      );
+      setAirbnbLinkError(null);
       // Reset imported markers when switching properties
       setImportedFields(new Set());
       setLastImportedAt(null);
     }
   }, [selectedProperty]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [activeConversationId, messages]);
+
+  useEffect(() => {
+    chatWebSocket.connect();
+    setIsWebSocketConnected(chatWebSocket.getConnectionStatus());
+
+    const messageUnsubscribe = chatWebSocket.onMessage((data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/messages", data.userMessage.conversationId] });
+      if (selectedProperty?.id) {
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations/property", selectedProperty.id] });
+      }
+    });
+
+    const errorUnsubscribe = chatWebSocket.onError((error) => {
+      console.error("WebSocket error:", error);
+    });
+
+    const statusInterval = setInterval(() => {
+      setIsWebSocketConnected(chatWebSocket.getConnectionStatus());
+    }, 1000);
+
+    return () => {
+      messageUnsubscribe();
+      errorUnsubscribe();
+      clearInterval(statusInterval);
+      chatWebSocket.disconnect();
+    };
+  }, [selectedProperty?.id, queryClient]);
 
   const handleAutoSave = (field: keyof InsertProperty, value: any) => {
     if (!selectedProperty) return;
@@ -254,6 +462,12 @@ export default function AdminHost() {
               <Link href="/cleaning">
                 <Sparkles className="w-4 h-4 mr-2" />
                 Ménages
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild data-testid="button-settings">
+              <Link href="/settings">
+                <SettingsIcon className="w-4 h-4 mr-2" />
+                Paramètres
               </Link>
             </Button>
           </motion.nav>
@@ -536,6 +750,91 @@ export default function AdminHost() {
                 </motion.div>
               )}
             </AnimatePresence>
+            {selectedProperty && (
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Card className="p-6 mt-4">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Lien Airbnb & synchronisation
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Reliez cette propriété à votre annonce Airbnb pour que la synchronisation automatique sache à quelle annonce répondre.
+                  </p>
+                  <div className="flex flex-col gap-2 md:flex-row">
+                    <Input
+                      id="airbnb-sync-link"
+                      value={airbnbLinkInput}
+                      onChange={(e) => setAirbnbLinkInput(e.target.value)}
+                      placeholder="https://www.airbnb.fr/rooms/12345678"
+                      className="w-full"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={handleAirbnbLinkSave}
+                        disabled={airbnbLinkInput.trim().length === 0 && !formData.smoobuListingId}
+                        className="whitespace-nowrap"
+                      >
+                        Associer
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={handleOpenAirbnbLink}
+                        disabled={!formData.smoobuListingId}
+                        title="Ouvrir l'annonce Airbnb"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  {airbnbLinkError ? (
+                    <p className="text-xs text-destructive mt-2">{airbnbLinkError}</p>
+                  ) : formData.smoobuListingId ? (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Annonce liée : #{formData.smoobuListingId} — la synchronisation se fera sur cette annonce.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Collez l'URL complète ou l'identifiant numérique de votre annonce Airbnb.
+                    </p>
+                  )}
+                  <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-center">
+                    <Button
+                      onClick={handlePropertySync}
+                      disabled={isPropertySyncing}
+                      className="gap-2"
+                    >
+                      {isPropertySyncing ? (
+                        <>
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          >
+                            <Sparkles className="w-4 h-4" />
+                          </motion.div>
+                          Synchronisation en cours...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          Synchroniser les messages
+                        </>
+                      )}
+                    </Button>
+                    {propertySyncResult && (
+                      <div className="text-xs text-muted-foreground">
+                        {propertySyncResult.repliesSent || 0} réponse(s) • {propertySyncResult.messagesProcessed || 0} message(s) traité(s)
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </motion.div>
+            )}
           </motion.div>
 
           <motion.div 
@@ -546,14 +845,161 @@ export default function AdminHost() {
           >
             {selectedProperty ? (
               <Tabs defaultValue="tableau" className="w-full">
-                <TabsList className="grid w-full grid-cols-6">
+                <TabsList className="grid w-full grid-cols-7">
                   <TabsTrigger value="tableau">Tableau</TabsTrigger>
+                  <TabsTrigger value="conversations">Messages</TabsTrigger>
                   <TabsTrigger value="general">Général</TabsTrigger>
                   <TabsTrigger value="checkin">Check-in/out</TabsTrigger>
                   <TabsTrigger value="amenities">Équipements</TabsTrigger>
                   <TabsTrigger value="rules">Règles</TabsTrigger>
                   <TabsTrigger value="info">Infos Utiles</TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="conversations" className="space-y-4">
+                  {!conversations || conversations.length === 0 ? (
+                    <Card className="p-6 text-center">
+                      <p className="text-muted-foreground">
+                        Aucune conversation pour cette propriété pour le moment. Dès qu’un voyageur écrit via l’annonce liée, les messages apparaîtront ici.
+                      </p>
+                      <div className="mt-4">
+                        <Button onClick={handlePropertySync} disabled={isPropertySyncing} className="gap-2">
+                          {isPropertySyncing ? (
+                            <>
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                              >
+                                <Sparkles className="w-4 h-4" />
+                              </motion.div>
+                              Synchronisation en cours...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-4 h-4" />
+                              Relancer la synchronisation
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </Card>
+                  ) : (
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <Card className="p-4 max-h-[500px] overflow-y-auto space-y-2">
+                        {conversations.map((conv) => (
+                          <button
+                            key={conv.id}
+                            onClick={() => setActiveConversationId(conv.id)}
+                            className={`w-full text-left p-3 rounded-lg border transition-all ${
+                              conv.id === activeConversationId
+                                ? "border-primary bg-primary/10"
+                                : "border-transparent hover:border-muted"
+                            }`}
+                          >
+                            <p className="font-semibold">{conv.guestName}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {new Date(conv.lastMessageAt || conv.createdAt || "").toLocaleString("fr-FR")}
+                            </p>
+                            <p className="text-sm mt-2 text-muted-foreground">
+                              Statut : {conv.status || "ouvert"}
+                            </p>
+                          </button>
+                        ))}
+                      </Card>
+                      <Card className="p-4 md:col-span-2 flex flex-col h-[500px]">
+                        {!activeConversationId ? (
+                          <div className="flex flex-1 items-center justify-center text-muted-foreground">
+                            Sélectionnez une conversation à gauche pour afficher les messages.
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex justify-between items-center mb-4">
+                              <div>
+                                <p className="font-semibold">{activeConversation?.guestName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {activeConversation?.status === "closed" ? "Clôturée" : "En cours"}
+                                </p>
+                              </div>
+                              <div className="text-xs px-3 py-1 border rounded-full flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${isWebSocketConnected ? "bg-emerald-500" : "bg-red-500"}`} />
+                                {isWebSocketConnected ? "Connecté" : "Hors ligne"}
+                              </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                              {messages && messages.length > 0 ? (
+                                messages.map((message) => (
+                                  <div
+                                    key={message.id}
+                                    className={`flex ${message.isBot ? "justify-end" : "justify-start"}`}
+                                  >
+                                    <div
+                                      className={`max-w-[80%] rounded-2xl px-4 py-2 shadow-sm ${
+                                        message.isBot
+                                          ? "bg-primary text-primary-foreground rounded-br-sm"
+                                          : "bg-muted rounded-bl-sm"
+                                      }`}
+                                    >
+                                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                                      <p className="text-[10px] mt-1 opacity-70">
+                                        {message.createdAt ? new Date(message.createdAt).toLocaleString("fr-FR") : ""}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-sm text-muted-foreground">Aucun message pour cette conversation.</p>
+                              )}
+                              <div ref={messagesEndRef} />
+                            </div>
+                            <div className="mt-4 flex flex-col gap-2">
+                              <Textarea
+                                rows={2}
+                                placeholder="Écrire une réponse..."
+                                value={messageInput}
+                                onChange={(e) => setMessageInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                    e.preventDefault();
+                                    handleSendMessage();
+                                  }
+                                }}
+                                disabled={isSendingMessage}
+                              />
+                              <div className="flex justify-between items-center gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                  {activeConversation?.bookingId
+                                    ? `Réservation #${activeConversation.bookingId}`
+                                    : "Conversation générale"}
+                                </p>
+                                <Button
+                                  onClick={handleSendMessage}
+                                  disabled={!messageInput.trim() || isSendingMessage}
+                                  className="gap-2"
+                                >
+                                  {isSendingMessage ? (
+                                    <>
+                                      <motion.div
+                                        animate={{ rotate: 360 }}
+                                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                      >
+                                        <MessageSquare className="w-4 h-4" />
+                                      </motion.div>
+                                      Envoi...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <MessageSquare className="w-4 h-4" />
+                                      Envoyer
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </Card>
+                    </div>
+                  )}
+                </TabsContent>
 
                 <TabsContent value="tableau" className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

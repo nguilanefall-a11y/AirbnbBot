@@ -214,6 +214,9 @@ export class MemStorage implements IStorage {
       trialStartedAt: existing?.trialStartedAt ?? null,
       trialEndsAt: existing?.trialEndsAt ?? null,
       activePropertyCount: existing?.activePropertyCount ?? "0",
+      airbnbCohostEmail: (userData as any).airbnbCohostEmail ?? existing?.airbnbCohostEmail ?? null,
+      airbnbCohostCookies: (userData as any).airbnbCohostCookies ?? existing?.airbnbCohostCookies ?? null,
+      airbnbCohostLastSync: (userData as any).airbnbCohostLastSync ?? existing?.airbnbCohostLastSync ?? null,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -599,25 +602,46 @@ export class PgStorage implements IStorage {
   }
 
   async upsertUser(user: UpsertUser): Promise<User> {
-    const existing = await this.getUserByEmail(user.email);
+    const existing = await this.getUser(user.id || "");
     if (existing) {
       const result = await this.ensureDb().update(users)
         .set({
           firstName: user.firstName ?? existing.firstName,
           lastName: user.lastName ?? existing.lastName,
           profileImageUrl: user.profileImageUrl ?? existing.profileImageUrl,
+          airbnbCohostEmail: (user as any).airbnbCohostEmail ?? existing.airbnbCohostEmail,
+          airbnbCohostCookies: (user as any).airbnbCohostCookies ?? existing.airbnbCohostCookies,
+          airbnbCohostLastSync: (user as any).airbnbCohostLastSync ?? existing.airbnbCohostLastSync,
           updatedAt: new Date(),
         })
         .where(eq(users.id, existing.id))
         .returning();
       return result[0];
     } else {
-      return this.createUser({
-        email: user.email,
-        password: "",
-        firstName: user.firstName,
-        lastName: user.lastName,
-      });
+      // Si pas d'ID, chercher par email
+      const existingByEmail = await this.getUserByEmail(user.email || "");
+      if (existingByEmail) {
+        const result = await this.ensureDb().update(users)
+          .set({
+            firstName: user.firstName ?? existingByEmail.firstName,
+            lastName: user.lastName ?? existingByEmail.lastName,
+            profileImageUrl: user.profileImageUrl ?? existingByEmail.profileImageUrl,
+            airbnbCohostEmail: (user as any).airbnbCohostEmail ?? existingByEmail.airbnbCohostEmail,
+            airbnbCohostCookies: (user as any).airbnbCohostCookies ?? existingByEmail.airbnbCohostCookies,
+            airbnbCohostLastSync: (user as any).airbnbCohostLastSync ?? existingByEmail.airbnbCohostLastSync,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, existingByEmail.id))
+          .returning();
+        return result[0];
+      } else {
+        return this.createUser({
+          email: user.email || "",
+          password: "",
+          firstName: user.firstName,
+          lastName: user.lastName,
+        });
+      }
     }
   }
 

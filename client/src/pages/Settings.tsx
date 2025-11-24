@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, User, Bell, Shield, Globe, Trash2, Save, LogOut, ArrowLeft, Plug, Copy, Loader2 } from "lucide-react";
+import { Settings as SettingsIcon, User, Bell, Shield, Globe, Trash2, Save, LogOut, ArrowLeft, Plug, Copy, Loader2, Home, RefreshCw, CheckCircle2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import Footer from "@/components/Footer";
 
@@ -34,6 +34,14 @@ export default function Settings() {
   const [smoobuWebhookSecret, setSmoobuWebhookSecret] = useState("");
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(true);
   const [hasSmoobuKey, setHasSmoobuKey] = useState(false);
+  
+  // Co-host states
+  const [cohostEmail, setCohostEmail] = useState("");
+  const [cohostCookies, setCohostCookies] = useState("");
+  const [cohostPassword, setCohostPassword] = useState("");
+  const [isSavingCohost, setIsSavingCohost] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<any>(null);
   
   const updateProfileMutation = useMutation({
     mutationFn: async (data: { firstName?: string; email?: string }) => {
@@ -66,6 +74,17 @@ export default function Settings() {
     },
   });
 
+  const cohostConfigQuery = useQuery({
+    queryKey: ["cohostConfig"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/cohost/config");
+      if (!res.ok) {
+        throw new Error("Impossible de charger la configuration co-hôte");
+      }
+      return res.json();
+    },
+  });
+
   useEffect(() => {
     if (smoobuIntegrationQuery.data) {
       setHasSmoobuKey(Boolean(smoobuIntegrationQuery.data?.hasApiKey));
@@ -73,6 +92,68 @@ export default function Settings() {
       setAutoReplyEnabled(settings.autoReply ?? true);
     }
   }, [smoobuIntegrationQuery.data]);
+
+  const saveCohostConfigMutation = useMutation({
+    mutationFn: async () => {
+      if (!cohostEmail && !cohostCookies) {
+        throw new Error("Email ou cookies requis");
+      }
+      const res = await apiRequest("POST", "/api/cohost/config", {
+        email: cohostEmail || undefined,
+        cookies: cohostCookies || undefined,
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error?.error || "Impossible de sauvegarder");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Configuration sauvegardée",
+        description: "Les identifiants co-hôte ont été sauvegardés.",
+      });
+      cohostConfigQuery.refetch();
+      setCohostEmail("");
+      setCohostCookies("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erreur",
+        description: error?.message || "Impossible de sauvegarder",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const syncCohostMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sync/cohost", {
+        password: cohostPassword || undefined,
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error?.error || "Erreur de synchronisation");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setSyncResult(data);
+      toast({
+        title: "Synchronisation réussie",
+        description: `${data.repliesSent || 0} réponse(s) envoyée(s)`,
+      });
+      cohostConfigQuery.refetch();
+      setCohostPassword("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erreur de synchronisation",
+        description: error?.message || "Impossible de synchroniser",
+        variant: "destructive",
+      });
+    },
+  });
 
   const connectSmoobuMutation = useMutation({
     mutationFn: async () => {
@@ -454,6 +535,141 @@ export default function Settings() {
             </CardContent>
           </Card>
 
+          {/* Configuration Co-Hôte Airbnb */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Home className="w-5 h-5" />
+                <CardTitle>Compte Co-Hôte Airbnb</CardTitle>
+              </div>
+              <CardDescription>
+                Configurez votre compte co-hôte Airbnb pour que l'IA réponde automatiquement aux voyageurs. 
+                <span className="text-green-600 font-semibold"> ✅ Approche légale</span>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {cohostConfigQuery.data?.configured && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  <div>
+                    <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                      Configuration active
+                    </p>
+                    {cohostConfigQuery.data?.lastSync && (
+                      <p className="text-xs text-green-700 dark:text-green-300">
+                        Dernière synchronisation : {new Date(cohostConfigQuery.data.lastSync).toLocaleString("fr-FR")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cohost-email">Email du compte co-hôte</Label>
+                  <Input
+                    id="cohost-email"
+                    type="email"
+                    value={cohostEmail}
+                    onChange={(e) => setCohostEmail(e.target.value)}
+                    placeholder="cohost@example.com"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Email du compte Airbnb co-hôte (optionnel si vous utilisez les cookies)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cohost-cookies">Cookies de session (recommandé)</Label>
+                  <Input
+                    id="cohost-cookies"
+                    type="password"
+                    value={cohostCookies}
+                    onChange={(e) => setCohostCookies(e.target.value)}
+                    placeholder="airbnb_session=xxx; airbnb_cookie=yyy; ..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Récupérez les cookies depuis les DevTools (F12) → Network → Headers → Cookie
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button
+                    onClick={() => saveCohostConfigMutation.mutate()}
+                    disabled={isSavingCohost || saveCohostConfigMutation.isPending}
+                  >
+                    {isSavingCohost || saveCohostConfigMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 mr-2" />
+                    )}
+                    Sauvegarder
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-base font-semibold">Synchronisation</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Récupère les messages depuis votre compte co-hôte et envoie les réponses automatiquement
+                  </p>
+                </div>
+
+                {cohostConfigQuery.data?.hasEmail && (
+                  <div className="space-y-2">
+                    <Label htmlFor="cohost-password">Mot de passe Airbnb</Label>
+                    <Input
+                      id="cohost-password"
+                      type="password"
+                      value={cohostPassword}
+                      onChange={(e) => setCohostPassword(e.target.value)}
+                      placeholder="Votre mot de passe Airbnb"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Saisissez-le si vous souhaitez que Playwright se connecte avec l’email. Le mot de passe n'est pas stocké et n'est utilisé que pour cette synchronisation.
+                    </p>
+                  </div>
+                )}
+
+                <Button
+                  onClick={() => syncCohostMutation.mutate()}
+                  disabled={!cohostConfigQuery.data?.configured || isSyncing || syncCohostMutation.isPending}
+                  className="w-full"
+                >
+                  {isSyncing || syncCohostMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Synchronisation en cours...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Synchroniser maintenant
+                    </>
+                  )}
+                </Button>
+
+                {syncResult && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <p className="text-sm font-medium mb-2">Résultats de la synchronisation :</p>
+                    <ul className="text-xs space-y-1 text-muted-foreground">
+                      <li>• {syncResult.listingsFound || 0} annonce(s) trouvée(s)</li>
+                      <li>• {syncResult.conversationsFound || 0} conversation(s) trouvée(s)</li>
+                      <li>• {syncResult.messagesProcessed || 0} message(s) traité(s)</li>
+                      <li>• {syncResult.repliesSent || 0} réponse(s) envoyée(s)</li>
+                      {syncResult.errors && syncResult.errors.length > 0 && (
+                        <li className="text-red-600">• {syncResult.errors.length} erreur(s)</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Intégrations PMS */}
           <Card>
             <CardHeader>
@@ -462,7 +678,7 @@ export default function Settings() {
                 <CardTitle>Coach IA & Smoobu</CardTitle>
               </div>
               <CardDescription>
-                Connectez votre compte Smoobu pour que l’IA réponde automatiquement aux voyageurs Airbnb.
+                Connectez votre compte Smoobu pour que l'IA réponde automatiquement aux voyageurs Airbnb.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
