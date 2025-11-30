@@ -47,14 +47,15 @@ export default function LandingHero() {
             background: `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(0,0,0,0.3) 100%)`
           }}
         />
-        {/* Bottom fade to background - smooth transition */}
-        <div 
-          className="absolute bottom-0 left-0 right-0 h-48"
-          style={{
-            background: 'linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.3) 40%, rgba(255,255,255,0.7) 70%, hsl(var(--background)) 100%)'
-          }}
-        />
       </motion.div>
+      
+      {/* Bottom fade to background - stays fixed at bottom */}
+      <div 
+        className="absolute bottom-0 left-0 right-0 h-48 z-[5] pointer-events-none"
+        style={{
+          background: 'linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.3) 40%, rgba(255,255,255,0.7) 70%, hsl(var(--background)) 100%)'
+        }}
+      />
       
       <motion.div 
         className="container mx-auto px-6 lg:px-12 relative z-10"
