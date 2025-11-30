@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Check, Sparkles } from "lucide-react";
-import { useLocation } from "wouter";
+import { Check, Sparkles, ArrowLeft } from "lucide-react";
+import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { motion } from "framer-motion";
@@ -61,11 +61,24 @@ export default function Pricing() {
         }}
       />
       <div className="container mx-auto px-4 py-16 relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <Link href="/">
+            <Button variant="ghost" className="mb-8 gap-2" data-testid="button-back-home">
+              <ArrowLeft className="w-4 h-4" />
+              Retour à l'accueil
+            </Button>
+          </Link>
+        </motion.div>
+
         <motion.div 
           className="text-center mb-12"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.6, delay: 0.1 }}
         >
           <h1 className="text-4xl font-bold mb-4">{t.pricingPage.title}</h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
