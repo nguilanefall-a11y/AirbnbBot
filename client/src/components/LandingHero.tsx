@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Sparkles } from "lucide-react";
-import heroImage from "@assets/generated_images/minimalist_luxury_living_room.png";
+import heroImage from "@assets/generated_images/warm_luxury_airbnb_interior.png";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Link } from "wouter";
 import { motion, useScroll, useTransform } from "framer-motion";
@@ -23,29 +23,30 @@ export default function LandingHero() {
         className="absolute inset-0 z-0"
         style={{ y }}
       >
-        {/* Image avec effet éthéré et lumineux */}
+        {/* Image avec couleurs chaudes et naturelles */}
         <div 
           className="absolute inset-0 bg-cover bg-center scale-105"
           style={{ 
             backgroundImage: `url(${heroImage})`,
-            filter: 'brightness(1.15) saturate(0.9)'
+            filter: 'brightness(1.0) saturate(1.1) contrast(1.05)'
           }}
         />
-        {/* Halo lumineux progressif sur les bords - effet éthéré */}
+        {/* Dark wash overlay for text readability */}
         <div 
           className="absolute inset-0"
           style={{
             background: `
-              radial-gradient(ellipse 80% 60% at 50% 50%, transparent 30%, hsl(var(--background)) 85%),
-              linear-gradient(to top, hsl(var(--background)) 0%, transparent 25%),
-              linear-gradient(to bottom, hsl(var(--background)) 0%, transparent 20%),
-              linear-gradient(to left, hsl(var(--background)) 0%, transparent 15%),
-              linear-gradient(to right, hsl(var(--background)) 0%, transparent 15%)
+              linear-gradient(135deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.15) 100%)
             `
           }}
         />
-        {/* Overlay doux pour le texte */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background/60 via-background/30 to-transparent" />
+        {/* Subtle vignette effect */}
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(0,0,0,0.3) 100%)`
+          }}
+        />
       </motion.div>
       
       <motion.div 
@@ -70,13 +71,13 @@ export default function LandingHero() {
                 repeatType: "reverse"
               }}
             >
-              <Sparkles className="w-6 h-6 text-primary" />
+              <Sparkles className="w-6 h-6 text-white" />
             </motion.div>
-            <span className="text-foreground/80 font-medium">{t.landing.hero.poweredByAI}</span>
+            <span className="text-white/90 font-medium">{t.landing.hero.poweredByAI}</span>
           </motion.div>
           
           <motion.h1 
-            className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight"
+            className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight drop-shadow-lg"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
@@ -85,7 +86,7 @@ export default function LandingHero() {
           </motion.h1>
           
           <motion.p 
-            className="text-lg md:text-xl text-muted-foreground mb-8 leading-relaxed"
+            className="text-lg md:text-xl text-white/85 mb-8 leading-relaxed drop-shadow-md"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
@@ -116,7 +117,7 @@ export default function LandingHero() {
                 <Button 
                   size="lg" 
                   variant="outline" 
-                  className="rounded-full px-8 text-base font-semibold"
+                  className="rounded-full px-8 text-base font-semibold bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20"
                   data-testid="button-demo"
                 >
                   {t.landing.hero.learnMore}
@@ -126,14 +127,14 @@ export default function LandingHero() {
           </motion.div>
           
           <motion.div 
-            className="mt-8 flex items-center gap-6 text-muted-foreground text-sm"
+            className="mt-8 flex items-center gap-6 text-white/70 text-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.8 }}
           >
             <div className="flex items-center gap-2">
               <motion.div 
-                className="w-2 h-2 bg-primary rounded-full"
+                className="w-2 h-2 bg-white rounded-full"
                 animate={{ scale: [1, 1.3, 1] }}
                 transition={{ duration: 2, repeat: Infinity }}
               />
@@ -141,7 +142,7 @@ export default function LandingHero() {
             </div>
             <div className="flex items-center gap-2">
               <motion.div 
-                className="w-2 h-2 bg-primary rounded-full"
+                className="w-2 h-2 bg-white rounded-full"
                 animate={{ scale: [1, 1.3, 1] }}
                 transition={{ duration: 2, repeat: Infinity, delay: 1 }}
               />
