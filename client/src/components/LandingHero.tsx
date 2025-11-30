@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Sparkles } from "lucide-react";
-import heroImage from "@assets/generated_images/Airbnb_hero_background_image_5f8c9168.png";
+import heroImage from "@assets/image_1764528423338.png";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Link } from "wouter";
 import { motion, useScroll, useTransform } from "framer-motion";

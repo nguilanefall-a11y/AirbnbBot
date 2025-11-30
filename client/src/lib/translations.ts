@@ -14,7 +14,7 @@ export const translations = {
         noCommitment: "Sans engagement"
       },
       features: {
-        title: "Pourquoi choisir notre assistant IA ?",
+        title: "Vos Avantages",
         available247: {
           title: "Disponible 24/7",
           description: "Vos voyageurs obtiennent des réponses instantanées, peu importe l'heure"
@@ -33,8 +33,8 @@ export const translations = {
         }
       },
       howItWorks: {
-        title: "Comment ça marche ?",
-        subtitle: "Quatre étapes simples pour automatiser vos réponses",
+        title: "Fonctionnement",
+        subtitle: "Quatre étapes simples",
         step1: {
           title: "Créez votre compte",
           description: "Inscription gratuite en 2 minutes"
@@ -53,7 +53,7 @@ export const translations = {
         }
       },
       pricing: {
-        title: "Tarifs simples et transparents",
+        title: "Nos Tarifs",
         cta: "Voir tous les tarifs"
       },
       cta: {
@@ -214,7 +214,7 @@ export const translations = {
         noCommitment: "No commitment"
       },
       features: {
-        title: "Why choose our AI assistant?",
+        title: "Your Benefits",
         available247: {
           title: "Available 24/7",
           description: "Your guests get instant answers, no matter the time"
@@ -233,8 +233,8 @@ export const translations = {
         }
       },
       howItWorks: {
-        title: "How it works?",
-        subtitle: "Four simple steps to automate your responses",
+        title: "How It Works",
+        subtitle: "Four simple steps",
         step1: {
           title: "Create your account",
           description: "Free registration in 2 minutes"
@@ -253,7 +253,7 @@ export const translations = {
         }
       },
       pricing: {
-        title: "Simple and transparent pricing",
+        title: "Pricing",
         cta: "See all pricing"
       },
       cta: {
@@ -414,7 +414,7 @@ export const translations = {
         noCommitment: "Sin compromiso"
       },
       features: {
-        title: "¿Por qué elegir nuestro asistente IA?",
+        title: "Tus Ventajas",
         available247: {
           title: "Disponible 24/7",
           description: "Tus huéspedes obtienen respuestas instantáneas, sin importar la hora"
@@ -433,8 +433,8 @@ export const translations = {
         }
       },
       howItWorks: {
-        title: "¿Cómo funciona?",
-        subtitle: "Cuatro pasos sencillos para automatizar tus respuestas",
+        title: "Funcionamiento",
+        subtitle: "Cuatro pasos sencillos",
         step1: {
           title: "Crea tu cuenta",
           description: "Registro gratuito en 2 minutos"
@@ -453,7 +453,7 @@ export const translations = {
         }
       },
       pricing: {
-        title: "Precios simples y transparentes",
+        title: "Precios",
         cta: "Ver todos los precios"
       },
       cta: {
@@ -614,7 +614,7 @@ export const translations = {
         noCommitment: "Keine Verpflichtung"
       },
       features: {
-        title: "Warum unseren KI-Assistenten wählen?",
+        title: "Ihre Vorteile",
         available247: {
           title: "Verfügbar 24/7",
           description: "Ihre Gäste erhalten sofortige Antworten, unabhängig von der Uhrzeit"
@@ -633,8 +633,8 @@ export const translations = {
         }
       },
       howItWorks: {
-        title: "Wie funktioniert es?",
-        subtitle: "Vier einfache Schritte zur Automatisierung Ihrer Antworten",
+        title: "Funktionsweise",
+        subtitle: "Vier einfache Schritte",
         step1: {
           title: "Erstellen Sie Ihr Konto",
           description: "Kostenlose Registrierung in 2 Minuten"
@@ -653,7 +653,7 @@ export const translations = {
         }
       },
       pricing: {
-        title: "Einfache und transparente Preise",
+        title: "Preise",
         cta: "Alle Preise anzeigen"
       },
       cta: {
@@ -814,7 +814,7 @@ export const translations = {
         noCommitment: "Nessun impegno"
       },
       features: {
-        title: "Perché scegliere il nostro assistente IA?",
+        title: "I Tuoi Vantaggi",
         available247: {
           title: "Disponibile 24/7",
           description: "I tuoi ospiti ottengono risposte immediate, indipendentemente dall'ora"
@@ -833,8 +833,8 @@ export const translations = {
         }
       },
       howItWorks: {
-        title: "Come funziona?",
-        subtitle: "Quattro semplici passaggi per automatizzare le tue risposte",
+        title: "Funzionamento",
+        subtitle: "Quattro semplici passaggi",
         step1: {
           title: "Crea il tuo account",
           description: "Registrazione gratuita in 2 minuti"
@@ -853,7 +853,7 @@ export const translations = {
         }
       },
       pricing: {
-        title: "Prezzi semplici e trasparenti",
+        title: "Prezzi",
         cta: "Vedi tutti i prezzi"
       },
       cta: {
