@@ -4,12 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MessageSquare, Loader2 } from "lucide-react";
+import { MessageSquare, Loader2, ArrowLeft } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, loginSchema } from "@shared/schema";
 import { z } from "zod";
 import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "wouter";
 import waveBackground from "@assets/image_1764527682604.png";
 
 export default function Auth() {
@@ -54,17 +55,31 @@ export default function Auth() {
         }}
       />
       <motion.div 
-        className="flex-1 flex items-center justify-center p-8 relative z-10"
+        className="flex-1 flex flex-col p-8 relative z-10"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
       >
         <motion.div
-          initial={{ scale: 0.95, y: 20 }}
-          animate={{ scale: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
         >
-          <Card className="w-full max-w-md shadow-xl">
+          <Link href="/">
+            <Button variant="ghost" className="mb-4 gap-2" data-testid="button-back-home">
+              <ArrowLeft className="w-4 h-4" />
+              Retour à l'accueil
+            </Button>
+          </Link>
+        </motion.div>
+
+        <div className="flex-1 flex items-center justify-center">
+          <motion.div
+            initial={{ scale: 0.95, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+          >
+            <Card className="w-full max-w-md shadow-xl">
             <CardHeader className="space-y-1">
               <motion.div 
                 className="flex items-center gap-2 justify-center mb-4"
@@ -267,7 +282,8 @@ export default function Auth() {
             </motion.div>
           </CardContent>
         </Card>
-      </motion.div>
+          </motion.div>
+        </div>
       </motion.div>
 
       <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary/20 to-primary/5 p-12 items-center justify-center relative z-10">
