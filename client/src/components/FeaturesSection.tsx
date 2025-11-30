@@ -1,28 +1,28 @@
 import FeatureCard from "./FeatureCard";
-import { Brain, Clock, Globe, BookOpen } from "lucide-react";
+import { MessageSquareOff, Smile, Video, DoorOpen } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function FeaturesSection() {
   const features = [
     {
-      icon: Brain,
-      title: "Réponses Intelligentes",
-      description: "L'IA comprend le contexte et fournit des réponses personnalisées basées sur les informations de votre propriété."
+      icon: MessageSquareOff,
+      title: "70% de messages en moins",
+      description: "Réduisez drastiquement les questions répétitives. L'IA répond instantanément aux voyageurs, vous libérant des échanges chronophages."
     },
     {
-      icon: Clock,
-      title: "Disponibilité Instantanée",
-      description: "Répondez aux voyageurs 24/7, même pendant votre sommeil. Aucune question ne reste sans réponse."
+      icon: Smile,
+      title: "Satisfaction maximale",
+      description: "Les voyageurs préfèrent l'autonomie. Ils obtiennent les réponses immédiatement, sans attendre votre disponibilité."
     },
     {
-      icon: Globe,
-      title: "Support Multilingue",
-      description: "Communiquez avec vos invités dans leur langue maternelle. L'IA détecte et répond en plusieurs langues."
+      icon: Video,
+      title: "Vidéo & Multimédia",
+      description: "Intégrez des vidéos explicatives dans les liens envoyés à vos voyageurs : visite virtuelle, tutoriel d'entrée, mode d'emploi."
     },
     {
-      icon: BookOpen,
-      title: "Base de Connaissances",
-      description: "Personnalisez les informations sur votre propriété : règles, équipements, check-in, WiFi, et bien plus."
+      icon: DoorOpen,
+      title: "Arrivée 100% Automatisée",
+      description: "Le système gère l'entrée sans intervention humaine. Instructions, codes, vidéos : tout est envoyé au bon moment."
     }
   ];
 
@@ -60,7 +60,7 @@ export default function FeaturesSection() {
           transition={{ duration: 0.6 }}
         >
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Pourquoi Choisir Notre Assistant IA ?
+            Vos Avantages
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Une solution complète pour automatiser la communication avec vos voyageurs

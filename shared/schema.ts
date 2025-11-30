@@ -94,6 +94,10 @@ export const properties = pgTable("properties", {
   additionalInfo: text("additional_info"),
   faqs: text("faqs"),
   
+  // Module d'arrivée
+  arrivalMessage: text("arrival_message"), // Message personnalisé pour l'arrivée
+  arrivalVideoUrl: text("arrival_video_url"), // URL vidéo YouTube/Loom pour l'arrivée
+  
   // Import metadata
   lastImportedAt: timestamp("last_imported_at"),
   icalUrl: text("ical_url"), // URL du calendrier iCal pour synchronisation
@@ -101,6 +105,27 @@ export const properties = pgTable("properties", {
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Table des réservations pour synchronisation iCal et logique J-1
+export const bookings = pgTable("bookings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  guestName: text("guest_name"),
+  guestEmail: text("guest_email"),
+  checkInDate: timestamp("check_in_date").notNull(), // Date d'arrivée
+  checkOutDate: timestamp("check_out_date").notNull(), // Date de départ
+  accessKey: varchar("access_key").notNull().unique().default(sql`substring(md5(random()::text), 1, 12)`), // Lien unique pour ce séjour
+  status: varchar("status").default("confirmed"), // confirmed, cancelled, completed
+  source: varchar("source").default("manual"), // manual, ical, airbnb_api
+  externalId: varchar("external_id"), // ID externe (Airbnb, etc.)
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_bookings_property_id").on(table.propertyId),
+  index("IDX_bookings_check_in_date").on(table.checkInDate),
+  index("IDX_bookings_access_key").on(table.accessKey),
+]);
 
 export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -259,6 +284,13 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
   readAt: true,
 });
 
+export const insertBookingSchema = createInsertSchema(bookings).omit({
+  id: true,
+  accessKey: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type Property = typeof properties.$inferSelect;
 
@@ -279,6 +311,9 @@ export type TeamMember = typeof teamMembers.$inferSelect;
 
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+export type InsertBooking = z.infer<typeof insertBookingSchema>;
+export type Booking = typeof bookings.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type RegisterUser = z.infer<typeof registerSchema>;

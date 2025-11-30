@@ -1,0 +1,56 @@
+MODE : AJOUT DE FONCTIONNALITÉS CLÉS & CONTENU MARKETING
+
+Je veux enrichir le contenu et ajouter une fonctionnalité majeure pour la gestion des arrivées.
+
+1. MISE À JOUR DU CONTENU MARKETING (Pages Avantages & Vision)
+
+Ajoute ces statistiques et arguments précis dans les pages "Avantages" et "Vision" :
+
+"70% de messages en moins" : C'est la promesse principale.
+
+"Satisfaction client maximale" : Explique que les voyageurs préfèrent l'autonomie.
+
+"Vidéo & Multimédia" : Mentionne clairement qu'on peut intégrer des vidéos explicatives dans les liens envoyés aux voyageurs.
+
+"Arrivée 100% Automatisée" : Le système gère l'entrée sans intervention humaine.
+
+2. NOUVELLE FONCTIONNALITÉ : LE "MODULE D'ARRIVÉE" (Côté Hôte)
+
+Dans le Dashboard (interface de gestion), crée une nouvelle section appelée "Configuration Arrivée".
+
+Ce que l'hôte doit pouvoir faire dedans :
+
+Rédiger le message d'arrivée (ex: codes, étage, wifi).
+
+Insérer une VIDÉO : Ajoute un champ pour uploader une vidéo ou coller un lien (YouTube/Loom) qui montre comment ouvrir la porte ou trouver les clés.
+
+Sauvegarder ce modèle.
+
+3. LOGIQUE D'AFFICHAGE INTELLIGENTE (Côté Voyageur)
+
+C'est le point critique. Sur le "Lien Voyageur" (la page que le client voit), cette section "Message d'Arrivée + Vidéo" doit être INVISIBLE par défaut.
+
+La Règle d'Or : Elle ne doit apparaître que la veille de l'arrivée (J-1).
+
+Implémentation technique :
+
+Le système doit comparer la date_du_jour avec la date_arrivee stockée dans la base de données (Supabase).
+
+Si date_du_jour >= date_arrivee - 1 jour : Débloque la section et affiche la vidéo.
+
+Sinon : Affiche un cadenas ou un message "Les instructions d'arrivée seront disponibles 24h avant votre séjour".
+
+4. NOTE SUR LA SYNCHRONISATION (Pour le futur)
+
+Prépare le terrain dans la base de données pour que la date_arrivee puisse venir d'une synchronisation automatique (iCal ou API) plus tard. Pour l'instant, assure-toi que le champ date existe bien dans la table bookings.
+
+ACTION : Mets à jour les textes marketing et code la logique conditionnelle pour l'affichage de la vidéo d'arrivée.
+
+💡 Un point important pour toi (La Synchro)
+Dans le point 4 du prompt, j'ai parlé de la Synchronisation. Puisqu'on a supprimé les robots (scrapers), ton application ne peut plus deviner quand le voyageur arrive.
+
+Pour que la "Règle de la veille" fonctionne, il faudra que l'application connaisse la date. Tu auras deux choix pour la suite :
+
+Manuel : Tu entres la date d'arrivée toi-même quand tu crées le lien.
+
+Automatique (iCal) : C'est la solution légère. Airbnb te donne un lien "iCal" (Calendrier). Ton appli pourra lire ce lien pour connaître les dates sans avoir besoin de robots compliqués. (C'est ce que font toutes les applis légères).

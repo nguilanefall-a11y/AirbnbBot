@@ -18,16 +18,34 @@ export default function LandingHero() {
   const opacity = useTransform(scrollYProgress, [0, 1], [1, 0]);
 
   return (
-    <div ref={ref} className="relative min-h-[80vh] flex items-center overflow-hidden">
+    <div ref={ref} className="relative min-h-[80vh] flex items-center overflow-hidden bg-background">
       <motion.div 
         className="absolute inset-0 z-0"
         style={{ y }}
       >
+        {/* Image avec effet éthéré et lumineux */}
         <div 
-          className="absolute inset-0 bg-cover bg-center scale-110"
-          style={{ backgroundImage: `url(${heroImage})` }}
+          className="absolute inset-0 bg-cover bg-center scale-105"
+          style={{ 
+            backgroundImage: `url(${heroImage})`,
+            filter: 'brightness(1.15) saturate(0.9)'
+          }}
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30" />
+        {/* Halo lumineux progressif sur les bords - effet éthéré */}
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: `
+              radial-gradient(ellipse 80% 60% at 50% 50%, transparent 30%, hsl(var(--background)) 85%),
+              linear-gradient(to top, hsl(var(--background)) 0%, transparent 25%),
+              linear-gradient(to bottom, hsl(var(--background)) 0%, transparent 20%),
+              linear-gradient(to left, hsl(var(--background)) 0%, transparent 15%),
+              linear-gradient(to right, hsl(var(--background)) 0%, transparent 15%)
+            `
+          }}
+        />
+        {/* Overlay doux pour le texte */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/60 via-background/30 to-transparent" />
       </motion.div>
       
       <motion.div 
@@ -54,11 +72,11 @@ export default function LandingHero() {
             >
               <Sparkles className="w-6 h-6 text-primary" />
             </motion.div>
-            <span className="text-white/90 font-medium">{t.landing.hero.poweredByAI}</span>
+            <span className="text-foreground/80 font-medium">{t.landing.hero.poweredByAI}</span>
           </motion.div>
           
           <motion.h1 
-            className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight"
+            className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
@@ -67,7 +85,7 @@ export default function LandingHero() {
           </motion.h1>
           
           <motion.p 
-            className="text-lg md:text-xl text-white/90 mb-8 leading-relaxed"
+            className="text-lg md:text-xl text-muted-foreground mb-8 leading-relaxed"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
@@ -98,7 +116,7 @@ export default function LandingHero() {
                 <Button 
                   size="lg" 
                   variant="outline" 
-                  className="rounded-full px-8 text-base font-semibold bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20"
+                  className="rounded-full px-8 text-base font-semibold"
                   data-testid="button-demo"
                 >
                   {t.landing.hero.learnMore}
@@ -108,7 +126,7 @@ export default function LandingHero() {
           </motion.div>
           
           <motion.div 
-            className="mt-8 flex items-center gap-6 text-white/80 text-sm"
+            className="mt-8 flex items-center gap-6 text-muted-foreground text-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.8 }}
