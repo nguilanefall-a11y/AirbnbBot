@@ -59,7 +59,15 @@ export default function FeaturesSection() {
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.6 }}
         >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+          <h2 
+            className="text-3xl md:text-4xl font-bold mb-4"
+            style={{
+              background: 'linear-gradient(to bottom, hsl(var(--foreground)) 0%, hsl(var(--foreground) / 0.7) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
+          >
             Vos Avantages
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">

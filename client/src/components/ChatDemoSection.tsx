@@ -24,7 +24,15 @@ export default function ChatDemoSection() {
             <span className="text-sm font-semibold">Démo Interactive</span>
           </motion.div>
           
-          <h2 className="text-4xl md:text-5xl font-bold mb-6 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+          <h2 
+            className="text-4xl md:text-5xl font-bold mb-6"
+            style={{
+              background: 'linear-gradient(to bottom, hsl(var(--foreground)) 0%, hsl(var(--foreground) / 0.65) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
+          >
             Testez l'Assistant en Direct
           </h2>
           <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
