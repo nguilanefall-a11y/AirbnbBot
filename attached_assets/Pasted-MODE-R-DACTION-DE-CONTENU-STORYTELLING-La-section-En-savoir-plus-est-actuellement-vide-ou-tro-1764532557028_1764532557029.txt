@@ -1,0 +1,19 @@
+MODE : RÉDACTION DE CONTENU & STORYTELLING
+
+La section "En savoir plus" est actuellement vide ou trop générique. Je veux la remplir avec un texte convaincant qui explique la philosophie de l'application et vend la tranquillité d'esprit.
+
+TA MISSION : Remplace le contenu de la page/section "En savoir plus" par les blocs de texte suivants. Utilise une mise en page aérée (icônes + titres + paragraphes) pour que ce soit agréable à lire.
+
+VOICI LE TEXTE À INTÉGRER :
+
+TITRE PRINCIPAL : Plus qu'un outil, votre Co-hôte Virtuel.
+
+BLOC 1 : La fin de la charge mentale "Gérer un Airbnb, ce n'est pas seulement changer des draps. C'est surtout répondre aux mêmes questions, encore et encore : 'Quel est le code Wifi ?', 'Comment marche la machine à café ?', 'Où se garer ?'. Notre application supprime cette répétition. En centralisant toutes les infos dans un Lien Voyageur unique, vous anticipez les besoins de vos clients avant même qu'ils ne posent la question."
+
+BLOC 2 : L'Arrivée Parfaite (La Règle des 24h) "La sécurité est notre priorité. C'est pourquoi nous avons créé le module d'arrivée intelligente. Fini l'envoi de codes sensibles des semaines à l'avance. Notre système débloque automatiquement les instructions d'entrée et la vidéo explicative uniquement la veille de l'arrivée. Votre logement reste sécurisé, et votre voyageur reçoit l'info exactement au moment où il en a besoin."
+
+BLOC 3 : Une expérience 5 étoiles grâce à la Vidéo "Le texte ne suffit pas toujours. Notre plateforme vous permet d'intégrer des vidéos d'accueil personnalisées directement dans le lien du voyageur. Montrez comment ouvrir la boîte à clés ou comment trouver l'entrée difficile. Résultat ? Moins de stress pour eux, et 70% de messages de 'panique à l'arrivée' en moins pour vous."
+
+BLOC 4 : L'avenir du Hosting "Rejoignez les hôtes qui ont choisi la liberté. En automatisant la communication et l'accès, vous ne gagnez pas seulement du temps, vous offrez une autonomie que les voyageurs modernes adorent. Passez de 'Gestionnaire de clés' à 'Superhost Serein'."
+
+ACTION : Intègre ces 4 blocs avec un design propre et professionnel. Utilise des icônes pertinentes pour chaque bloc (ex: un cerveau pour la charge mentale, un cadenas/horloge pour les 24h, une caméra pour la vidéo).

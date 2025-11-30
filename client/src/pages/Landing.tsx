@@ -1,5 +1,6 @@
 import LandingHeader from "@/components/LandingHeader";
 import LandingHero from "@/components/LandingHero";
+import PhilosophySection from "@/components/PhilosophySection";
 import FeaturesSection from "@/components/FeaturesSection";
 import HowItWorksSection from "@/components/HowItWorksSection";
 import ChatDemoSection from "@/components/ChatDemoSection";
@@ -28,8 +29,9 @@ export default function Landing() {
         <main>
           <LandingHero />
           <div id="features">
-            <FeaturesSection />
+            <PhilosophySection />
           </div>
+          <FeaturesSection />
           <div id="how-it-works">
             <HowItWorksSection />
           </div>
