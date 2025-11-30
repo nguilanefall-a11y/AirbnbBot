@@ -18,7 +18,7 @@ export default function LandingHero() {
   const opacity = useTransform(scrollYProgress, [0, 1], [1, 0]);
 
   return (
-    <div ref={ref} className="relative min-h-[80vh] flex items-center overflow-hidden bg-background">
+    <div ref={ref} className="relative min-h-screen flex items-center overflow-hidden bg-background">
       <motion.div 
         className="absolute inset-0 z-0"
         style={{ y }}

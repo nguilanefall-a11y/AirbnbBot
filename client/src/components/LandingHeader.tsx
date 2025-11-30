@@ -24,40 +24,48 @@ export default function LandingHeader() {
   const [showImport, setShowImport] = useState(false);
   
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-6 lg:px-12 h-16 flex items-center justify-between">
+    <header className="absolute top-0 left-0 right-0 z-50 w-full">
+      {/* Gradient overlay for text readability */}
+      <div 
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)',
+          height: '120px'
+        }}
+      />
+      <div className="container mx-auto px-6 lg:px-12 h-16 flex items-center justify-between relative z-10">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <MessageSquare className="w-5 h-5 text-primary-foreground" />
+          <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
+            <MessageSquare className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold">Assistant Airbnb IA</span>
+          <span className="text-xl font-bold text-white drop-shadow-md">Assistant Airbnb IA</span>
         </div>
         
         <nav className="hidden md:flex items-center gap-8">
           <a 
             href="#features" 
-            className="text-sm font-medium hover-elevate px-3 py-2 rounded-md transition-colors"
+            className="text-sm font-medium text-white/90 hover:text-white px-3 py-2 rounded-md transition-colors drop-shadow-sm"
             data-testid="link-features"
           >
             {t.landing.features.title}
           </a>
           <a 
             href="#how-it-works" 
-            className="text-sm font-medium hover-elevate px-3 py-2 rounded-md transition-colors"
+            className="text-sm font-medium text-white/90 hover:text-white px-3 py-2 rounded-md transition-colors drop-shadow-sm"
             data-testid="link-how-it-works"
           >
             {t.landing.howItWorks.title}
           </a>
           <Link 
             href="/pricing"
-            className="text-sm font-medium hover-elevate px-3 py-2 rounded-md transition-colors"
+            className="text-sm font-medium text-white/90 hover:text-white px-3 py-2 rounded-md transition-colors drop-shadow-sm"
             data-testid="link-pricing"
           >
             {t.landing.pricing.title}
           </Link>
           <a 
             href="#contact" 
-            className="text-sm font-medium hover-elevate px-3 py-2 rounded-md transition-colors"
+            className="text-sm font-medium text-white/90 hover:text-white px-3 py-2 rounded-md transition-colors drop-shadow-sm"
             data-testid="link-contact"
           >
             {t.landing.contact}
@@ -65,19 +73,19 @@ export default function LandingHeader() {
         </nav>
         
         <div className="flex items-center gap-3">
-          <LanguageSelector />
-          <ThemeToggle />
+          <LanguageSelector variant="light" />
+          <ThemeToggle variant="light" />
           {!isLoading && !user && (
             <>
               <Link href="/auth">
-                <Button variant="ghost" size="sm" data-testid="button-login">
+                <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/10" data-testid="button-login">
                   Se connecter
                 </Button>
               </Link>
               <Link href="/auth">
                 <Button 
                   size="sm" 
-                  className="rounded-full"
+                  className="rounded-full bg-white/20 backdrop-blur-sm border border-white/30 text-white hover:bg-white/30"
                   data-testid="button-signup"
                 >
                   {t.auth.register.button}
@@ -87,17 +95,17 @@ export default function LandingHeader() {
           )}
           {!isLoading && user && (
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+              <Button variant="outline" size="sm" className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20" onClick={() => setShowImport(true)}>
                 Importer depuis Airbnb
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setLocation('/host')}>
+              <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/10" onClick={() => setLocation('/host')}>
                 Espace hôte
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="focus:outline-none">
-                    <Avatar className="h-8 w-8 cursor-pointer hover:ring-2 ring-primary transition-all">
-                      <AvatarFallback>
+                    <Avatar className="h-8 w-8 cursor-pointer hover:ring-2 ring-white/50 transition-all border border-white/30">
+                      <AvatarFallback className="bg-white/20 text-white">
                         {(user.firstName?.[0] || user.email?.[0] || '?').toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
