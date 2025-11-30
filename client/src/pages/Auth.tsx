@@ -51,7 +51,7 @@ export default function Auth() {
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          opacity: 0.2
+          opacity: 0.45
         }}
       />
       <motion.div 

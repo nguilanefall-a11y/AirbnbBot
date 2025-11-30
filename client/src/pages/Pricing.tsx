@@ -57,7 +57,7 @@ export default function Pricing() {
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          opacity: 0.15
+          opacity: 0.45
         }}
       />
       <div className="container mx-auto px-4 py-16 relative z-10">

@@ -19,7 +19,7 @@ export default function Landing() {
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          opacity: 0.15
+          opacity: 0.45
         }}
       />
       
