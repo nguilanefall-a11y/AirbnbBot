@@ -51,7 +51,7 @@ export default function Auth() {
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          opacity: 0.45
+          opacity: 0.35
         }}
       />
       <motion.div 
@@ -79,7 +79,7 @@ export default function Auth() {
             animate={{ scale: 1, y: 0 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
           >
-            <Card className="w-full max-w-md shadow-xl">
+            <Card className="w-full max-w-md shadow-xl bg-background/80 backdrop-blur-xl border-border/50">
             <CardHeader className="space-y-1">
               <motion.div 
                 className="flex items-center gap-2 justify-center mb-4"
@@ -94,7 +94,7 @@ export default function Auth() {
                 >
                   <MessageSquare className="w-6 h-6 text-primary-foreground" />
                 </motion.div>
-                <span className="text-2xl font-bold">Assistant Airbnb IA</span>
+                <span className="text-2xl font-bold bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Assistant Airbnb IA</span>
               </motion.div>
               <AnimatePresence mode="wait">
                 <motion.div
@@ -288,7 +288,7 @@ export default function Auth() {
 
       <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary/20 to-primary/5 p-12 items-center justify-center relative z-10">
         <div className="max-w-md space-y-6">
-          <h2 className="text-4xl font-bold">
+          <h2 className="text-4xl font-medium bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">
             Assistant IA pour hôtes Airbnb
           </h2>
           <p className="text-lg text-muted-foreground">

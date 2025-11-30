@@ -16,6 +16,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { useToast } from "@/hooks/use-toast";
 import { chatWebSocket } from "@/lib/websocket";
 import heroImage from "@assets/stock_images/beautiful_welcoming__f0be1f33.jpg";
+import waveBackground from "@assets/image_1764527682604.png";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Guest() {
@@ -280,7 +281,22 @@ export default function Guest() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
+      {/* Wave background - only show when in chat mode */}
+      {selectedConversation && (
+        <div 
+          className="fixed inset-0 z-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(${waveBackground})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            opacity: 0.35
+          }}
+        />
+      )}
+      
+      {/* Hero image background - only show when no conversation selected */}
       {!selectedConversation && (
         <div className="fixed inset-0 z-0">
           <img 
@@ -322,7 +338,7 @@ export default function Guest() {
         </div>
       </header>
 
-      <div className="container mx-auto p-4 h-[calc(100vh-4rem)]">
+      <div className="container mx-auto p-4 h-[calc(100vh-4rem)] relative z-10">
         {!selectedConversation ? (
           <div className="h-full flex items-center justify-center relative z-10">
             <motion.div
@@ -352,7 +368,7 @@ export default function Guest() {
                     <Sparkles className="w-10 h-10 text-white" />
                   </motion.div>
                   <motion.h2 
-                    className="text-3xl font-bold mb-3 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent"
+                    className="text-3xl font-medium mb-3 bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3, duration: 0.5 }}
@@ -451,7 +467,7 @@ export default function Guest() {
             <ArrivalInfoSection />
             
             {/* Chat Container */}
-            <div className="flex-1 flex flex-col bg-gradient-to-br from-background via-background to-muted/20 rounded-3xl shadow-2xl overflow-hidden border border-border/50">
+            <div className="flex-1 flex flex-col bg-background/80 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-border/50">
             {/* Header with glassmorphism effect */}
             <motion.div 
               className="p-5 border-b border-border/50 bg-background/80 backdrop-blur-xl"

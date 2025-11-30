@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { ArrowLeft, Download, TrendingUp, MessageSquare, Users, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useLocation } from "wouter";
+import waveBackground from "@assets/image_1764527682604.png";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
@@ -77,23 +78,35 @@ export default function Analytics() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
+    <div className="min-h-screen bg-background relative">
+      {/* Wave background */}
+      <div 
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{
+          backgroundImage: `url(${waveBackground})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          opacity: 0.35
+        }}
+      />
+      
+      <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-xl">
         <div className="container mx-auto px-6 h-16 flex items-center justify-between">
           <Button variant="ghost" onClick={() => setLocation("/host")}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Retour
           </Button>
-          <h1 className="text-2xl font-bold">Analytics</h1>
+          <h1 className="text-2xl font-medium bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Analytics</h1>
           <div className="w-24" />
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-6 py-8 relative z-10">
         {/* Filters */}
-        <Card className="mb-6">
+        <Card className="mb-6 bg-background/80 backdrop-blur-xl border-border/50 shadow-lg">
           <CardHeader>
-            <CardTitle>Filtres</CardTitle>
+            <CardTitle className="bg-gradient-to-b from-foreground to-foreground/80 bg-clip-text text-transparent">Filtres</CardTitle>
             <CardDescription>Filtrez les statistiques par propriété et période</CardDescription>
           </CardHeader>
           <CardContent>
@@ -133,8 +146,8 @@ export default function Analytics() {
           <>
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Card className="bg-background/80 backdrop-blur-xl border-border/50 shadow-md">
+                <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Messages</CardTitle>
                   <MessageSquare className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
@@ -144,8 +157,8 @@ export default function Analytics() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Card className="bg-background/80 backdrop-blur-xl border-border/50 shadow-md">
+                <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Conversations</CardTitle>
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
@@ -155,8 +168,8 @@ export default function Analytics() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Card className="bg-background/80 backdrop-blur-xl border-border/50 shadow-md">
+                <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Feedback Positif</CardTitle>
                   <ThumbsUp className="h-4 w-4 text-green-500" />
                 </CardHeader>
@@ -170,8 +183,8 @@ export default function Analytics() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Card className="bg-background/80 backdrop-blur-xl border-border/50 shadow-md">
+                <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Feedback Négatif</CardTitle>
                   <ThumbsDown className="h-4 w-4 text-red-500" />
                 </CardHeader>
@@ -190,9 +203,9 @@ export default function Analytics() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               {/* Messages by Language */}
               {analyticsData.messagesByLanguage.length > 0 && (
-                <Card>
+                <Card className="bg-background/80 backdrop-blur-xl border-border/50 shadow-md">
                   <CardHeader>
-                    <CardTitle>Messages par Langue</CardTitle>
+                    <CardTitle className="bg-gradient-to-b from-foreground to-foreground/80 bg-clip-text text-transparent">Messages par Langue</CardTitle>
                     <CardDescription>Répartition des messages selon la langue</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -221,9 +234,9 @@ export default function Analytics() {
 
               {/* Messages by Category */}
               {analyticsData.messagesByCategory.length > 0 && (
-                <Card>
+                <Card className="bg-background/80 backdrop-blur-xl border-border/50 shadow-md">
                   <CardHeader>
-                    <CardTitle>Messages par Catégorie</CardTitle>
+                    <CardTitle className="bg-gradient-to-b from-foreground to-foreground/80 bg-clip-text text-transparent">Messages par Catégorie</CardTitle>
                     <CardDescription>Répartition des questions par catégorie</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -244,9 +257,9 @@ export default function Analytics() {
 
             {/* Top Questions */}
             {analyticsData.topQuestions.length > 0 && (
-              <Card>
+              <Card className="bg-background/80 backdrop-blur-xl border-border/50 shadow-md">
                 <CardHeader>
-                  <CardTitle>Questions les Plus Fréquentes</CardTitle>
+                  <CardTitle className="bg-gradient-to-b from-foreground to-foreground/80 bg-clip-text text-transparent">Questions les Plus Fréquentes</CardTitle>
                   <CardDescription>Les questions les plus posées par les voyageurs</CardDescription>
                 </CardHeader>
                 <CardContent>

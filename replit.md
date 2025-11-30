@@ -27,6 +27,14 @@ The application features a landing page showcasing the product, separate host an
 
 ## Recent Changes
 
+**Design System Update (November 30, 2025):**
+- Applied unified design system across ALL user interfaces
+- Wave background pattern at 0.35 opacity on all pages (Landing, Auth, Host, Guest, Subscribe, Analytics, Pricing, FAQ, Help Center)
+- Glassmorphism styling on cards: bg-background/80 backdrop-blur-xl border-border/50
+- Gradient text effect on main titles: from-foreground to-foreground/70
+- Headers with glassmorphism: bg-background/80 backdrop-blur-xl
+- Proper z-index layering: wave background z-0, content z-10, header z-50
+
 **Arrival Module (November 2025):**
 - Added "Arrivée" tab in host dashboard for arrival instructions configuration
 - Host can add: YouTube/Loom video URL with preview, custom arrival message

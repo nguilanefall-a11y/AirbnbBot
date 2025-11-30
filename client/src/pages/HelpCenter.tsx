@@ -52,7 +52,7 @@ export default function HelpCenter() {
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          opacity: 0.45
+          opacity: 0.35
         }}
       />
       

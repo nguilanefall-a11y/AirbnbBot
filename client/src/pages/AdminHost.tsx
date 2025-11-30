@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Settings as SettingsIcon } from "lucide-react";
 import Footer from "@/components/Footer";
+import waveBackground from "@assets/image_1764527682604.png";
 
 export default function AdminHost() {
   const { toast } = useToast();
@@ -208,9 +209,21 @@ export default function AdminHost() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
+      {/* Wave background */}
+      <div 
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{
+          backgroundImage: `url(${waveBackground})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          opacity: 0.35
+        }}
+      />
+      
       <motion.header 
-        className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur"
+        className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-xl"
         initial={{ y: -64, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
@@ -325,7 +338,7 @@ export default function AdminHost() {
         </div>
       </motion.header>
 
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-6 py-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <motion.div 
             className="lg:col-span-1"
@@ -333,8 +346,8 @@ export default function AdminHost() {
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.3, duration: 0.5 }}
           >
-            <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4">Vos Propriétés</h2>
+            <Card className="p-6 bg-background/80 backdrop-blur-xl border-border/50 shadow-lg">
+              <h2 className="text-xl font-semibold mb-4 bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Vos Propriétés</h2>
               <div className="mb-3">
                 <Button
                   variant="default"
@@ -488,7 +501,7 @@ export default function AdminHost() {
                   exit={{ opacity: 0, y: -20, scale: 0.95 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <Card className="p-6 mt-6">
+                  <Card className="p-6 mt-6 bg-background/80 backdrop-blur-xl border-border/50 shadow-lg">
                     <h3 className="font-semibold mb-3 flex items-center gap-2">
                       <LinkIcon className="w-4 h-4" />
                       Lien Voyageur
@@ -548,7 +561,7 @@ export default function AdminHost() {
 
                 <TabsContent value="tableau" className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Adresse", "address")}
                       <Input
                         id="address"
@@ -559,7 +572,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Code porte", "doorCode")}
                       <Input
                         id="doorCode"
@@ -570,7 +583,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Étage", "floor")}
                       <Input
                         id="floor"
@@ -581,7 +594,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Heure d'arrivée", "checkInTime")}
                       <Input
                         id="checkInTime"
@@ -593,7 +606,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Heure de départ", "checkOutTime")}
                       <Input
                         id="checkOutTime"
@@ -605,7 +618,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Voyageurs max", "maxGuests")}
                       <Input
                         id="maxGuests"
@@ -616,7 +629,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Nom WiFi", "wifiName")}
                       <Input
                         id="wifiName"
@@ -627,7 +640,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Mot de passe WiFi", "wifiPassword")}
                       <Input
                         id="wifiPassword"
@@ -638,7 +651,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                    <Card className="p-4 md:col-span-2 xl:col-span-3 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Instructions d'accès", "accessInstructions")}
                       <Textarea
                         id="accessInstructions"
@@ -650,7 +663,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Emplacement des clés", "keyLocation")}
                       <Input
                         id="keyLocation"
@@ -661,7 +674,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Téléphone hôte", "hostPhone")}
                       <Input
                         id="hostPhone"
@@ -672,7 +685,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Contact d'urgence", "emergencyContact")}
                       <Input
                         id="emergencyContact"
@@ -683,7 +696,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Parking", "parkingInfo")}
                       <Textarea
                         id="parkingInfo"
@@ -695,7 +708,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Transports", "publicTransport")}
                       <Textarea
                         id="publicTransport"
@@ -707,7 +720,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                    <Card className="p-4 md:col-span-2 xl:col-span-3 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Règles de la maison", "houseRules")}
                       <Textarea
                         id="houseRules"
@@ -720,7 +733,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                    <Card className="p-4 md:col-span-2 xl:col-span-3 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Commerces à proximité", "nearbyShops")}
                       <Textarea
                         id="nearbyShops"
@@ -733,7 +746,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                    <Card className="p-4 md:col-span-2 xl:col-span-3 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Restaurants recommandés", "restaurants")}
                       <Textarea
                         id="restaurants"
@@ -746,7 +759,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                    <Card className="p-4 md:col-span-2 xl:col-span-3 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("Informations supplémentaires", "additionalInfo")}
                       <Textarea
                         id="additionalInfo"
@@ -759,7 +772,7 @@ export default function AdminHost() {
                       />
                     </Card>
 
-                    <Card className="p-4 md:col-span-2 xl:col-span-3">
+                    <Card className="p-4 md:col-span-2 xl:col-span-3 bg-background/80 backdrop-blur-xl border-border/50">
                       {renderLabel("FAQs (Questions fréquentes)", "faqs")}
                       <Textarea
                         id="faqs"
@@ -775,7 +788,7 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="general" className="space-y-6">
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <MapPin className="w-5 h-5 text-primary" />
@@ -858,7 +871,7 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <UserIcon className="w-5 h-5 text-primary" />
@@ -906,7 +919,7 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="checkin" className="space-y-6">
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Clock className="w-5 h-5 text-primary" />
@@ -941,7 +954,7 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Info className="w-5 h-5 text-primary" />
@@ -991,7 +1004,7 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="arrivee" className="space-y-6">
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Plane className="w-5 h-5 text-primary" />
@@ -1081,7 +1094,7 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="amenities" className="space-y-6">
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Wifi className="w-5 h-5 text-primary" />
@@ -1114,7 +1127,7 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Utensils className="w-5 h-5 text-primary" />
@@ -1196,7 +1209,7 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="rules" className="space-y-6">
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Shield className="w-5 h-5 text-primary" />
@@ -1294,7 +1307,7 @@ export default function AdminHost() {
                 </TabsContent>
 
                 <TabsContent value="info" className="space-y-6">
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <MapPin className="w-5 h-5 text-primary" />
@@ -1330,7 +1343,7 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Info className="w-5 h-5 text-primary" />
@@ -1366,7 +1379,7 @@ export default function AdminHost() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-l-4 border-l-primary">
+                  <Card className="border-l-4 border-l-primary bg-background/80 backdrop-blur-xl">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Info className="w-5 h-5 text-primary" />
@@ -1404,7 +1417,7 @@ export default function AdminHost() {
                 </TabsContent>
               </Tabs>
             ) : (
-              <Card className="p-12">
+              <Card className="p-12 bg-background/80 backdrop-blur-xl border-border/50">
                 <div className="text-center text-muted-foreground">
                   <Home className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>Sélectionnez une propriété pour commencer la configuration</p>
