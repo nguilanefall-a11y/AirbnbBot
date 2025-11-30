@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Download, Sparkles, DollarSign, MapPin, User as UserIcon, Clock, Wifi, Shield, Info, Utensils, Thermometer, BarChart3 } from "lucide-react";
+import { Copy, CheckCircle2, Home, MessageSquare, Link as LinkIcon, LogOut, Download, Sparkles, DollarSign, MapPin, User as UserIcon, Clock, Wifi, Shield, Info, Utensils, Thermometer, BarChart3, Plane, Video, FileText } from "lucide-react";
 import type { Property, InsertProperty, User } from "@shared/schema";
 import { Link, useLocation } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -147,6 +147,8 @@ export default function AdminHost() {
         applianceInstructions: selectedProperty.applianceInstructions || "",
         additionalInfo: selectedProperty.additionalInfo || "",
         faqs: selectedProperty.faqs || "",
+        arrivalMessage: selectedProperty.arrivalMessage || "",
+        arrivalVideoUrl: selectedProperty.arrivalVideoUrl || "",
       });
       // Reset imported markers when switching properties
       setImportedFields(new Set());
@@ -534,10 +536,11 @@ export default function AdminHost() {
           >
             {selectedProperty ? (
               <Tabs defaultValue="tableau" className="w-full">
-                <TabsList className="grid w-full grid-cols-6">
+                <TabsList className="grid w-full grid-cols-7">
                   <TabsTrigger value="tableau">Tableau</TabsTrigger>
                   <TabsTrigger value="general">Général</TabsTrigger>
                   <TabsTrigger value="checkin">Check-in/out</TabsTrigger>
+                  <TabsTrigger value="arrivee">Arrivée</TabsTrigger>
                   <TabsTrigger value="amenities">Équipements</TabsTrigger>
                   <TabsTrigger value="rules">Règles</TabsTrigger>
                   <TabsTrigger value="info">Infos Utiles</TabsTrigger>
@@ -982,6 +985,96 @@ export default function AdminHost() {
                           onBlur={(e) => handleAutoSave("checkOutProcedure", e.target.value)}
                           data-testid="input-checkout-procedure"
                         />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="arrivee" className="space-y-6">
+                  <Card className="border-l-4 border-l-primary">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Plane className="w-5 h-5 text-primary" />
+                        Module d'Arrivée
+                      </CardTitle>
+                      <CardDescription>
+                        Ces informations seront envoyées automatiquement à vos voyageurs la veille de leur arrivée (J-1)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-primary" />
+                          <span className="font-medium">Fonctionnement</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Le contenu ci-dessous (message et vidéo) sera affiché au voyageur uniquement à partir de J-1 (la veille de son check-in). 
+                          Avant cette date, l'assistant IA répondra aux questions générales mais ne révélera pas les instructions d'arrivée détaillées.
+                        </p>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Video className="w-4 h-4 text-primary" />
+                          {renderLabel("Vidéo d'arrivée (YouTube/Loom)", "arrivalVideoUrl")}
+                        </div>
+                        <Input
+                          id="arrivalVideoUrl"
+                          placeholder="https://www.youtube.com/watch?v=... ou https://www.loom.com/share/..."
+                          value={formData.arrivalVideoUrl || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, arrivalVideoUrl: e.target.value }))}
+                          onBlur={(e) => handleAutoSave("arrivalVideoUrl", e.target.value)}
+                          data-testid="input-arrival-video-url"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Créez une vidéo montrant comment accéder à votre logement. Les liens YouTube et Loom sont supportés.
+                        </p>
+                        {formData.arrivalVideoUrl && (
+                          <div className="mt-3 p-3 bg-muted rounded-lg">
+                            <p className="text-sm text-muted-foreground mb-2">Aperçu:</p>
+                            {formData.arrivalVideoUrl.includes('youtube.com') || formData.arrivalVideoUrl.includes('youtu.be') ? (
+                              <iframe
+                                className="w-full aspect-video rounded-lg"
+                                src={`https://www.youtube.com/embed/${formData.arrivalVideoUrl.split('v=')[1]?.split('&')[0] || formData.arrivalVideoUrl.split('youtu.be/')[1]?.split('?')[0] || ''}`}
+                                title="Aperçu vidéo d'arrivée"
+                                allowFullScreen
+                              />
+                            ) : formData.arrivalVideoUrl.includes('loom.com') ? (
+                              <iframe
+                                className="w-full aspect-video rounded-lg"
+                                src={formData.arrivalVideoUrl.replace('/share/', '/embed/')}
+                                title="Aperçu vidéo d'arrivée"
+                                allowFullScreen
+                              />
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Format de vidéo non reconnu</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-4 h-4 text-primary" />
+                          {renderLabel("Message d'arrivée personnalisé", "arrivalMessage")}
+                        </div>
+                        <Textarea
+                          id="arrivalMessage"
+                          rows={6}
+                          placeholder="Cher voyageur, bienvenue ! Voici les instructions détaillées pour accéder à votre logement...
+
+1. À votre arrivée à l'adresse...
+2. Le digicode de l'immeuble est...
+3. Prenez l'ascenseur jusqu'au...
+4. La clé se trouve..."
+                          value={formData.arrivalMessage || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, arrivalMessage: e.target.value }))}
+                          onBlur={(e) => handleAutoSave("arrivalMessage", e.target.value)}
+                          data-testid="input-arrival-message"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Ce message sera affiché au voyageur avec la vidéo à partir de J-1. Incluez toutes les instructions d'accès.
+                        </p>
                       </div>
                     </CardContent>
                   </Card>

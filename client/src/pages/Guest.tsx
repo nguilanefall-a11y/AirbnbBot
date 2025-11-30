@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { MessageSquare, Send, Bot, User, Plus, Sparkles } from "lucide-react";
+import { MessageSquare, Send, Bot, User, Plus, Sparkles, Video, Plane, ChevronDown, ChevronUp } from "lucide-react";
 import type { Property, Conversation, Message } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -28,11 +28,23 @@ export default function Guest() {
   const [guestName, setGuestName] = useState("");
   const [isNameDialogOpen, setIsNameDialogOpen] = useState(false);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
+  const [isArrivalInfoExpanded, setIsArrivalInfoExpanded] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: property, isLoading: isLoadingProperty } = useQuery<Property>({
     queryKey: ["/api/properties/by-key", accessKey],
     enabled: !!accessKey,
+  });
+
+  // Check arrival eligibility (J-1 rule)
+  const { data: arrivalEligibility } = useQuery<{
+    eligible: boolean;
+    reason: string;
+    checkInDate: string | null;
+    checkOutDate: string | null;
+  }>({
+    queryKey: ["/api/arrival-eligibility", property?.id],
+    enabled: !!property?.id,
   });
 
   const { data: conversations } = useQuery<Conversation[]>({
@@ -123,6 +135,121 @@ export default function Guest() {
     if (!guestName.trim()) return;
     createConversationMutation.mutate(guestName);
     setGuestName("");
+  };
+
+  // Helper to extract YouTube embed URL
+  const getYouTubeEmbedUrl = (url: string): string | null => {
+    if (!url) return null;
+    if (url.includes('youtube.com/watch')) {
+      const videoId = url.split('v=')[1]?.split('&')[0];
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+    }
+    if (url.includes('youtu.be/')) {
+      const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+    }
+    return null;
+  };
+
+  // Helper to extract Loom embed URL
+  const getLoomEmbedUrl = (url: string): string | null => {
+    if (!url) return null;
+    if (url.includes('loom.com/share/')) {
+      return url.replace('/share/', '/embed/');
+    }
+    return null;
+  };
+
+  // Check if property has arrival information configured
+  const hasArrivalInfo = property?.arrivalMessage || property?.arrivalVideoUrl;
+  
+  // Check if guest is eligible to see arrival info (J-1 rule)
+  const canShowArrivalInfo = hasArrivalInfo && arrivalEligibility?.eligible;
+
+  // Arrival Information Component
+  const ArrivalInfoSection = () => {
+    if (!canShowArrivalInfo || !selectedConversation) return null;
+    
+    const youtubeEmbedUrl = property?.arrivalVideoUrl ? getYouTubeEmbedUrl(property.arrivalVideoUrl) : null;
+    const loomEmbedUrl = property?.arrivalVideoUrl ? getLoomEmbedUrl(property.arrivalVideoUrl) : null;
+    const videoEmbedUrl = youtubeEmbedUrl || loomEmbedUrl;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-4"
+      >
+        <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-primary/20 overflow-hidden">
+          <button 
+            className="w-full p-4 flex items-center justify-between text-left"
+            onClick={() => setIsArrivalInfoExpanded(!isArrivalInfoExpanded)}
+            data-testid="button-toggle-arrival-info"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                <Plane className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-base">Informations d'arrivée</h3>
+                <p className="text-xs text-muted-foreground">Votre guide pour accéder au logement</p>
+              </div>
+            </div>
+            <motion.div
+              animate={{ rotate: isArrivalInfoExpanded ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ChevronDown className="w-5 h-5 text-muted-foreground" />
+            </motion.div>
+          </button>
+          
+          <AnimatePresence>
+            {isArrivalInfoExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <div className="px-4 pb-4 space-y-4">
+                  {videoEmbedUrl && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Video className="w-4 h-4 text-primary" />
+                        <span>Vidéo d'accès</span>
+                      </div>
+                      <div className="rounded-xl overflow-hidden shadow-lg">
+                        <iframe
+                          className="w-full aspect-video"
+                          src={videoEmbedUrl}
+                          title="Vidéo d'arrivée"
+                          allowFullScreen
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {property?.arrivalMessage && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Plane className="w-4 h-4 text-primary" />
+                        <span>Instructions</span>
+                      </div>
+                      <div className="bg-background/80 rounded-xl p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                        {property.arrivalMessage}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </Card>
+      </motion.div>
+    );
   };
 
   if (isLoadingProperty) {
@@ -315,11 +442,16 @@ export default function Guest() {
           </div>
         ) : (
           <motion.div 
-            className="h-full flex flex-col bg-gradient-to-br from-background via-background to-muted/20 rounded-3xl shadow-2xl overflow-hidden border border-border/50"
+            className="h-full flex flex-col"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           >
+            {/* Arrival Information Section */}
+            <ArrivalInfoSection />
+            
+            {/* Chat Container */}
+            <div className="flex-1 flex flex-col bg-gradient-to-br from-background via-background to-muted/20 rounded-3xl shadow-2xl overflow-hidden border border-border/50">
             {/* Header with glassmorphism effect */}
             <motion.div 
               className="p-5 border-b border-border/50 bg-background/80 backdrop-blur-xl"
@@ -526,6 +658,7 @@ export default function Guest() {
                 Demandez-moi n'importe quoi sur {property.name}
               </motion.p>
             </motion.div>
+            </div>
           </motion.div>
         )}
       </div>

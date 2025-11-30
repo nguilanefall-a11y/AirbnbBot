@@ -27,6 +27,15 @@ The application features a landing page showcasing the product, separate host an
 
 ## Recent Changes
 
+**Arrival Module (November 2025):**
+- Added "Arrivée" tab in host dashboard for arrival instructions configuration
+- Host can add: YouTube/Loom video URL with preview, custom arrival message
+- J-1 gating: Arrival info only visible to guests within the check-in window
+- Created bookings table for future iCal synchronization
+- API endpoint: /api/arrival-eligibility/:propertyId checks J-1 eligibility
+- Guest space shows collapsible arrival info section when eligible
+- **Current Design**: Access keys are per-property. Full J-1 enforcement requires booking-specific links (future enhancement: generate unique access keys per booking via iCal sync)
+
 **Authentication System (November 3, 2025):**
 - Migrated from Replit Auth to independent email/password authentication
 - Implemented passport-local strategy with scrypt password hashing (per-user salts)
@@ -73,7 +82,8 @@ Preferred communication style: Simple, everyday language.
 - **Host Space** (`/host`) - Sophisticated admin interface with:
   - Property list sidebar
   - Guest link generator with copy functionality
-  - Tabbed configuration (5 tabs: Général, Check-in/out, Équipements, Règles, Infos Utiles)
+  - Tabbed configuration (7 tabs: Général, Check-in/out, Équipements, Règles, Infos Utiles, Arrivée, Documents)
+  - Arrivée tab: Configure arrival video (YouTube/Loom) and message for J-1 display
   - Auto-save on field blur
   - Real-time toast notifications
   - Logout button in header

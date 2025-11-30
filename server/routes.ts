@@ -157,6 +157,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check if guest is within J-1 window (for arrival info visibility)
+  app.get("/api/arrival-eligibility/:propertyId", async (req, res) => {
+    try {
+      const { propertyId } = req.params;
+      
+      // Get property to verify it exists
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      // Check if there's an active booking for this property
+      const activeBooking = await storage.getActiveBookingForProperty(propertyId);
+      
+      if (!activeBooking) {
+        // No active booking - arrival info should NOT be shown (J-1 gating requires a booking)
+        const hasArrivalInfo = property.arrivalMessage || property.arrivalVideoUrl;
+        return res.json({ 
+          eligible: false,
+          reason: hasArrivalInfo ? "no_active_booking" : "no_booking_and_no_arrival_info",
+          hasArrivalInfo: hasArrivalInfo,
+          checkInDate: null,
+          checkOutDate: null,
+          message: "Les informations d'arrivée seront disponibles la veille de votre check-in."
+        });
+      }
+
+      // Calculate J-1 window
+      const now = new Date();
+      const checkInDate = new Date(activeBooking.checkInDate);
+      const checkOutDate = new Date(activeBooking.checkOutDate);
+      
+      // J-1 means the day before check-in (24 hours before midnight of check-in day)
+      const jMinus1 = new Date(checkInDate);
+      jMinus1.setDate(jMinus1.getDate() - 1);
+      jMinus1.setHours(0, 0, 0, 0);
+
+      // Eligible if current time is >= J-1 and before checkout
+      const isEligible = now >= jMinus1 && now < checkOutDate;
+
+      res.json({
+        eligible: isEligible,
+        reason: isEligible ? "within_j1_window" : "before_j1_window",
+        checkInDate: checkInDate.toISOString(),
+        checkOutDate: checkOutDate.toISOString(),
+        jMinus1Date: jMinus1.toISOString()
+      });
+    } catch (error) {
+      console.error("Error checking arrival eligibility:", error);
+      res.status(500).json({ error: "Failed to check arrival eligibility" });
+    }
+  });
+
   app.post("/api/properties", isAuthenticated, ensureHostAccess, async (req: any, res) => {
     try {
       const userId = req.user.id;

@@ -15,6 +15,8 @@ import {
   type InsertTeamMember,
   type Notification,
   type InsertNotification,
+  type Booking,
+  type InsertBooking,
   users,
   properties,
   conversations,
@@ -23,6 +25,7 @@ import {
   responseTemplates,
   teamMembers,
   notifications,
+  bookings,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -91,6 +94,14 @@ export interface IStorage {
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<Notification | undefined>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
+  
+  // Booking operations
+  getBookingByAccessKey(accessKey: string): Promise<Booking | undefined>;
+  getBookingsByProperty(propertyId: string): Promise<Booking[]>;
+  createBooking(booking: InsertBooking): Promise<Booking>;
+  updateBooking(id: string, updates: Partial<InsertBooking>): Promise<Booking | undefined>;
+  deleteBooking(id: string): Promise<boolean>;
+  getActiveBookingForProperty(propertyId: string): Promise<Booking | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -143,7 +154,11 @@ export class MemStorage implements IStorage {
       applianceInstructions: "WI-FI : Nom du réseau : Paris8Elegant_WiFi | Mot de passe : ChampsElysees2024! | Le routeur se trouve dans le salon, près de la TV.\n\nTV 4K : Télécommande universelle sur la table basse. Netflix Premium déjà configuré (compte hôte). Pour d'autres applications, utilisez le menu Smart TV.\n\nLAVE-LINGE : Programme rapide (30 min) pour les vêtements peu sales, programme coton (1h30) pour le linge de maison. Lessive et adoucissant dans le placard sous l'évier.\n\nSÈCHE-LINGE : Utiliser après le lave-linge. Programme automatique recommandé. Vider le filtre à peluches avant chaque utilisation.\n\nLAVE-VAISSELLE : Tablettes dans le placard sous l'évier. Programme éco pour économiser l'eau.\n\nMACHINE À CAFÉ NESPRESSO : Capsules fournies dans le placard de la cuisine. Allumer 30 secondes avant utilisation pour préchauffer.\n\nCLIMATISATION : Télécommande dans le salon. Mode automatique recommandé (température idéale : 22-23°C en été).",
       additionalInfo: "LINGE : Linge de lit supplémentaire dans l'armoire de la chambre principale. Serviettes supplémentaires dans le placard de la salle de bain.\n\nPRODUITS D'ACCUEIL : Shampoing, gel douche, savon, crème hydratante fournis dans la salle de bain. Produits de nettoyage sous l'évier de la cuisine.\n\nCONSIGNES À BAGAGES : Bag'n Store (Rue de Ponthieu) à 200m - 5€/jour. Nannybag (service en ligne) disponible pour livraison/collecte.\n\nINFORMATIONS TOURISTIQUES : Guides de Paris disponibles dans le salon. Cartes de métro gratuites. Brochures des musées et monuments à proximité.\n\nSÉCURITÉ : Appartement équipé d'un système d'alarme (code fourni à l'arrivée). Fermer toutes les fenêtres en partant. Double verrouillage de la porte d'entrée.\n\nÉLECTRICITÉ : Tableau électrique dans l'entrée (à gauche). En cas de coupure, vérifier les disjoncteurs.",
       faqs: "Q: Où est le code Wi-Fi ?\nR: Le réseau s'appelle 'Paris8Elegant_WiFi' et le mot de passe est 'ChampsElysees2024!'. Le routeur est dans le salon, près de la TV.\n\nQ: Comment utiliser la climatisation ?\nR: Utiliser la télécommande dans le salon. Mode automatique recommandé (22-23°C en été). La climatisation est réversible et fonctionne aussi en chauffage l'hiver.\n\nQ: Où sont les clés ?\nR: Dans la boîte sécurisée à l'entrée de l'immeuble. Code : 2842#. Les clés sont marquées 'Appartement 5ème étage'.\n\nQ: Où se garer ?\nR: Parking public à 100m (Parking Champs-Élysées - 2,50€/h) ou parking privé sur réservation (15€/jour). Stationnement gratuit possible dans certaines rues adjacentes après 20h et le dimanche.\n\nQ: Où faire les courses ?\nR: Monoprix Champs-Élysées à 3 min à pied (ouvert jusqu'à 23h). Carrefour Market à 5 min. Les deux proposent une large gamme de produits alimentaires et d'hygiène.\n\nQ: Où manger ?\nR: Nombreux restaurants sur les Champs-Élysées. Le Fouquet's (brasserie historique) à 3 min, Ladurée (pâtisseries et salon de thé) à 2 min, L'Atelier Étoilé (1 étoile Michelin) à 5 min. Pour un repas rapide : McDonald's, KFC, Starbucks sur les Champs-Élysées.\n\nQ: Où est la laverie ?\nR: Laverie automatique à 200m, Rue de Ponthieu. Ouverte 24/7. Prix : environ 5€ pour un lavage et 3€ pour un séchage.\n\nQ: Comment utiliser le lave-linge ?\nR: Lessive et adoucissant dans le placard sous l'évier. Programme rapide (30 min) pour les vêtements peu sales, programme coton (1h30) pour le linge de maison. Ne pas surcharger la machine.\n\nQ: Comment utiliser le sèche-linge ?\nR: Utiliser après le lave-linge. Programme automatique recommandé. Vider le filtre à peluches avant chaque utilisation. Ne pas mettre de vêtements en laine ou délicats.\n\nQ: Où sont les produits ménagers ?\nR: Sous l'évier de la cuisine, dans le placard de droite. Vous y trouverez produits vaisselle, éponges, serpillières, et produits de nettoyage.\n\nQ: Comment contacter l'hôte en cas de problème ?\nR: Sophie au +33 6 12 34 56 78 (disponible 24/7). Pour les urgences médicales : 15. Police : 17. Pompiers : 18.\n\nQ: Où jeter les poubelles ?\nR: Tri sélectif dans la cuisine : Jaune (emballages, plastiques), Vert (verre), Bleu (papier, carton), Gris (déchets organiques). Sortir les poubelles le mardi et vendredi matin avant 8h dans la cour de l'immeuble.\n\nQ: Y a-t-il un ascenseur ?\nR: Oui, ascenseur jusqu'au 5ème étage. L'appartement est accessible directement depuis l'ascenseur, porte à droite en sortant.\n\nQ: Quelle est la vue depuis l'appartement ?\nR: Vue sur les toits de Paris, orientation sud-ouest, très lumineux. Vue dégagée sans vis-à-vis direct.\n\nQ: Comment utiliser la TV 4K et Netflix ?\nR: Télécommande universelle sur la table basse. Netflix Premium déjà configuré (compte hôte). Pour d'autres applications (YouTube, Prime Video), utilisez le menu Smart TV. Si Netflix ne fonctionne pas, reconnectez-vous ou contactez l'hôte.\n\nQ: Comment utiliser la machine à café Nespresso ?\nR: Capsules fournies dans le placard de la cuisine. Allumer la machine 30 secondes avant utilisation pour préchauffer. Insérer la capsule, appuyer sur le bouton. Eau dans le réservoir à l'arrière.\n\nQ: Où est le lave-vaisselle et comment l'utiliser ?\nR: Le lave-vaisselle est intégré dans la cuisine, sous l'évier. Tablettes de lave-vaisselle dans le placard sous l'évier. Programme éco recommandé pour économiser l'eau. Rincer rapidement les assiettes avant de les mettre.\n\nQ: Comment régler le chauffage ?\nR: Chauffage central individuel avec thermostat dans le salon. Tourner le thermostat vers la droite pour augmenter (recommandé : 20-21°C). Fenêtres double vitrage pour isolation optimale.\n\nQ: Où sont les pharmacies à proximité ?\nR: Pharmacie des Champs-Élysées (24/7) à 2 min à pied. Plusieurs autres pharmacies dans le quartier, toutes à moins de 5 min.\n\nQ: Quels sont les transports en commun les plus proches ?\nR: Métro ligne 1 (Champs-Élysées - Clemenceau) à 2 min à pied. Métro ligne 8 (Concorde) à 5 min. Métro ligne 9 (Franklin D. Roosevelt) à 3 min. RER C (Invalides) à 10 min. Bus : 24, 42, 72, 84, 94. Vélib' station à 50m.\n\nQ: Où sont les banques et bureaux de change ?\nR: BNP Paribas, Crédit Agricole, LCL à proximité. Plusieurs bureaux de change à moins de 5 min sur les Champs-Élysées. Distributeurs automatiques disponibles partout.\n\nQ: Où sont les boutiques et magasins ?\nR: Toutes les grandes marques sur les Champs-Élysées : Zara, H&M, Sephora, Nike, Adidas, etc. Galeries Lafayette et Printemps à 10 min en métro.\n\nQ: Où sont les musées et monuments à proximité ?\nR: Arc de Triomphe à 5 min à pied. Place de la Concorde à 5 min. Grand Palais et Petit Palais à 8 min. Musée du Louvre à 15 min en métro. Tour Eiffel à 20 min en métro.\n\nQ: Où sont les bars et cafés ?\nR: Le Bar des Champs à 3 min, Harry's New York Bar (cocktails) à 5 min. Nombreux cafés sur les Champs-Élysées. Café de Flore à 6 min.\n\nQ: Où sont les boulangeries et pâtisseries ?\nR: Maison Kayser à 2 min, Paul à 3 min, Ladurée (pâtisseries) à 2 min. Toutes les boulangeries proposent des viennoiseries fraîches le matin.\n\nQ: Où est le linge supplémentaire ?\nR: Linge de lit supplémentaire dans l'armoire de la chambre principale. Serviettes supplémentaires dans le placard de la salle de bain.\n\nQ: Où sont les produits d'accueil (shampoing, gel douche) ?\nR: Shampoing, gel douche, savon, crème hydratante fournis dans la salle de bain. Produits de qualité, renouvelés à chaque arrivée.\n\nQ: Où sont les consignes à bagages ?\nR: Bag'n Store (Rue de Ponthieu) à 200m - 5€/jour. Nannybag (service en ligne) disponible pour livraison/collecte. Idéal si vous arrivez avant le check-in ou partez après le check-out.\n\nQ: Où sont les guides touristiques et cartes ?\nR: Guides de Paris disponibles dans le salon. Cartes de métro gratuites. Brochures des musées et monuments à proximité. Informations touristiques dans le salon.\n\nQ: Comment fonctionne le système d'alarme ?\nR: Appartement équipé d'un système d'alarme (code fourni à l'arrivée). Fermer toutes les fenêtres en partant. Double verrouillage de la porte d'entrée. Instructions complètes dans le guide d'accueil.\n\nQ: Où est le tableau électrique ?\nR: Tableau électrique dans l'entrée, à gauche. En cas de coupure, vérifier les disjoncteurs. Ne pas toucher si vous n'êtes pas sûr, contacter l'hôte.\n\nQ: Y a-t-il un fer à repasser ?\nR: Oui, fer à repasser et table à repasser disponibles dans l'armoire de la chambre. Table à repasser pliable, facile à installer.\n\nQ: Où est le sèche-cheveux ?\nR: Sèche-cheveux dans la salle de bain, dans le placard sous le lavabo. Modèle professionnel, puissance élevée.\n\nQ: Quels sont les horaires de check-in et check-out ?\nR: Check-in : à partir de 15h. Check-out : avant 11h. Si vous avez besoin d'un check-in plus tôt ou d'un check-out plus tard, contactez l'hôte à l'avance (sous réserve de disponibilité).",
+      arrivalMessage: null,
+      arrivalVideoUrl: null,
       lastImportedAt: null,
+      icalUrl: null,
+      cleaningPersonId: null,
       createdAt: new Date(),
     };
     this.properties.set(defaultPropertyId, defaultProperty);
@@ -327,7 +342,11 @@ export class MemStorage implements IStorage {
       applianceInstructions: insertProperty.applianceInstructions ?? null,
       additionalInfo: insertProperty.additionalInfo ?? null,
       faqs: insertProperty.faqs ?? null,
+      arrivalMessage: insertProperty.arrivalMessage ?? null,
+      arrivalVideoUrl: insertProperty.arrivalVideoUrl ?? null,
       lastImportedAt: insertProperty.lastImportedAt ?? null,
+      icalUrl: insertProperty.icalUrl ?? null,
+      cleaningPersonId: insertProperty.cleaningPersonId ?? null,
       createdAt: new Date()
     };
     this.properties.set(id, property);
@@ -493,6 +512,31 @@ export class MemStorage implements IStorage {
 
   async markAllNotificationsAsRead(userId: string): Promise<void> {
     // No-op for MemStorage
+  }
+
+  // Booking operations (stub for MemStorage)
+  async getBookingByAccessKey(accessKey: string): Promise<Booking | undefined> {
+    return undefined;
+  }
+
+  async getBookingsByProperty(propertyId: string): Promise<Booking[]> {
+    return [];
+  }
+
+  async createBooking(booking: InsertBooking): Promise<Booking> {
+    throw new Error("Bookings not supported in MemStorage. Use PostgreSQL.");
+  }
+
+  async updateBooking(id: string, updates: Partial<InsertBooking>): Promise<Booking | undefined> {
+    return undefined;
+  }
+
+  async deleteBooking(id: string): Promise<boolean> {
+    return false;
+  }
+
+  async getActiveBookingForProperty(propertyId: string): Promise<Booking | undefined> {
+    return undefined;
   }
 }
 
@@ -953,6 +997,59 @@ export class PgStorage implements IStorage {
     await this.ensureDb().update(notifications)
       .set({ isRead: true, readAt: new Date() })
       .where(eq(notifications.userId, userId));
+  }
+
+  // Booking operations
+  async getBookingByAccessKey(accessKey: string): Promise<Booking | undefined> {
+    const result = await this.ensureDb().select().from(bookings)
+      .where(eq(bookings.accessKey, accessKey))
+      .limit(1);
+    return result[0];
+  }
+
+  async getBookingsByProperty(propertyId: string): Promise<Booking[]> {
+    return await this.ensureDb().select().from(bookings)
+      .where(eq(bookings.propertyId, propertyId))
+      .orderBy(desc(bookings.checkInDate));
+  }
+
+  async createBooking(booking: InsertBooking): Promise<Booking> {
+    const result = await this.ensureDb().insert(bookings).values(booking).returning();
+    return result[0];
+  }
+
+  async updateBooking(id: string, updates: Partial<InsertBooking>): Promise<Booking | undefined> {
+    const result = await this.ensureDb().update(bookings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(bookings.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteBooking(id: string): Promise<boolean> {
+    const result = await this.ensureDb().delete(bookings)
+      .where(eq(bookings.id, id))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getActiveBookingForProperty(propertyId: string): Promise<Booking | undefined> {
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    
+    // Find booking where check-in is within the next day or already started
+    const result = await this.ensureDb().select().from(bookings)
+      .where(
+        and(
+          eq(bookings.propertyId, propertyId),
+          eq(bookings.status, 'confirmed'),
+          lte(bookings.checkInDate, tomorrow), // Check-in within next day
+          gte(bookings.checkOutDate, now) // Not checked out yet
+        )
+      )
+      .orderBy(bookings.checkInDate)
+      .limit(1);
+    return result[0];
   }
 }
 
