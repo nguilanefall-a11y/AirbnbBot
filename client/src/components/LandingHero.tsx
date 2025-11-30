@@ -112,7 +112,7 @@ export default function LandingHero() {
                 </Button>
               </motion.div>
             </Link>
-            <a href="#features">
+            <Link href="/about">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button 
                   size="lg" 
@@ -123,7 +123,7 @@ export default function LandingHero() {
                   {t.landing.hero.learnMore}
                 </Button>
               </motion.div>
-            </a>
+            </Link>
           </motion.div>
           
           <motion.div 

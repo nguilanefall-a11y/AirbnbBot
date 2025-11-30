@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import Landing from "@/pages/Landing";
+import About from "@/pages/About";
 import Auth from "@/pages/Auth";
 import Chat from "@/pages/Chat";
 import AdminHost from "@/pages/AdminHost";
@@ -24,6 +25,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
+      <Route path="/about" component={About} />
       <Route path="/auth" component={Auth} />
       <Route path="/chat" component={Chat} />
       <Route path="/host" component={AdminHost} />
