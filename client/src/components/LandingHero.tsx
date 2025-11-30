@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Sparkles } from "lucide-react";
-import heroImage from "@assets/generated_images/warm_luxury_airbnb_interior.png";
+import heroImage from "@assets/generated_images/luxury_mediterranean_villa_interior.png";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Link } from "wouter";
 import { motion, useScroll, useTransform } from "framer-motion";
