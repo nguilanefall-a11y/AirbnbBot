@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { motion } from "framer-motion";
+import waveBackground from "@assets/image_1764527682604.png";
 
 export default function Pricing() {
   const [, setLocation] = useLocation();
@@ -47,8 +48,19 @@ export default function Pricing() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-16">
+    <div className="min-h-screen bg-background relative">
+      {/* Minimalist wave background */}
+      <div 
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{
+          backgroundImage: `url(${waveBackground})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          opacity: 0.15
+        }}
+      />
+      <div className="container mx-auto px-4 py-16 relative z-10">
         <motion.div 
           className="text-center mb-12"
           initial={{ opacity: 0, y: 30 }}

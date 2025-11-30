@@ -10,6 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, loginSchema } from "@shared/schema";
 import { z } from "zod";
 import { motion, AnimatePresence } from "framer-motion";
+import waveBackground from "@assets/image_1764527682604.png";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -40,9 +41,20 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex relative">
+      {/* Minimalist wave background */}
+      <div 
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{
+          backgroundImage: `url(${waveBackground})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          opacity: 0.2
+        }}
+      />
       <motion.div 
-        className="flex-1 flex items-center justify-center p-8"
+        className="flex-1 flex items-center justify-center p-8 relative z-10"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
@@ -258,7 +270,7 @@ export default function Auth() {
       </motion.div>
       </motion.div>
 
-      <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary/20 to-primary/5 p-12 items-center justify-center">
+      <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary/20 to-primary/5 p-12 items-center justify-center relative z-10">
         <div className="max-w-md space-y-6">
           <h2 className="text-4xl font-bold">
             Assistant IA pour hôtes Airbnb
