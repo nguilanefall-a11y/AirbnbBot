@@ -85,13 +85,13 @@ export default function LandingHero() {
           </motion.div>
           
           <motion.h1 
-            className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight"
+            className="text-4xl md:text-5xl lg:text-6xl font-medium mb-6 leading-tight"
             style={{
-              background: 'linear-gradient(to bottom, #ffffff 0%, rgba(255,255,255,0.85) 100%)',
+              background: 'linear-gradient(to bottom, #ffffff 0%, rgba(255,255,255,0.75) 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
-              filter: 'drop-shadow(0 4px 20px rgba(255,255,255,0.15))',
+              filter: 'drop-shadow(0 4px 24px rgba(255,255,255,0.2))',
             }}
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}

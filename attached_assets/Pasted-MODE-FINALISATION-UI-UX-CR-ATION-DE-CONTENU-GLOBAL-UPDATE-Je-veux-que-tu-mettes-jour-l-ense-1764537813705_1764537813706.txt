@@ -1,0 +1,40 @@
+MODE : FINALISATION UI/UX & CRÉATION DE CONTENU (GLOBAL UPDATE)
+
+Je veux que tu mettes à jour l'ensemble du site pour corriger le design et remplir les pages manquantes. Voici les instructions précises regroupées par catégorie. Exécute tout en une seule fois.
+
+1. DESIGN & ESTHÉTIQUE (Le Look "Premium")
+   
+   A. TITRES FLUIDES (Gradient Text)
+   Les titres principaux sont actuellement trop "solides" et opaques. Je veux qu'ils se fondent dans le décor avec un effet de texte dégradé.
+   - Cibles : Le titre principal de la Hero Section, ainsi que les titres "Automatisez vos réponses", "Contact", "Fonctionnement", "Vos avantages".
+   - Technique CSS : Applique `background-clip: text`, `text-fill-color: transparent` et un `background-image` en dégradé (ex: blanc vers gris clair ou transparent) pour qu'ils paraissent lumineux et incrustés.
+   - Ajustement Hero : Rends le titre principal un peu plus fin (font-weight légèrement réduit) pour qu'il soit élégant.
+
+   B. LE CARRÉ "TESTER L'ASSISTANT"
+   Ce bloc ne s'intègre pas bien.
+   - Applique un style "Glassmorphism" : Fond semi-transparent, flou d'arrière-plan (`backdrop-filter: blur`), et une fine bordure lumineuse.
+   - Adapte la couleur du texte à l'intérieur pour qu'il soit lisible mais doux (pas de noir pur agressif).
+
+2. CORRECTIONS DE CONTENU
+   
+   A. PAGE TARIFS
+   - Supprime toute demande de carte bancaire ou formulaire de paiement.
+   - Remplace par des mentions comme "Sans engagement", "Essai gratuit" ou "Paiement sécurisé ultérieur".
+
+3. CRÉATION DES NOUVELLES PAGES (Remplissage)
+   
+   A. PAGE FAQ (/faq)
+   - Crée une page "Foire Aux Questions" complète.
+   - Utilise un design en accordéon (questions cliquables qui dévoilent la réponse).
+   - Questions à inclure : "Est-ce sécurisé ?", "Comment fonctionne le lien voyageur ?", "Puis-je changer la vidéo d'accueil ?", "Cela fonctionne-t-il avec Booking ?".
+
+   B. PAGE CENTRE D'AIDE (/aide)
+   - Crée une page "Centre d'Aide".
+   - Ajoute des catégories claires : "Guide de démarrage", "Mon Compte", "Support Technique".
+   - Remplis avec du faux-texte pertinent (Lorem Ipsum réaliste).
+
+4. VÉRIFICATION GLOBALE
+   - Vérifie que les pages `/contact`, `/fonctionnement`, `/avantages` ne sont pas vides. Si elles le sont, ajoute le Header, le Footer et une section de contenu temporaire.
+   - Assure-toi que le logo en haut à gauche redirige bien vers l'accueil sur toutes ces nouvelles pages.
+
+ACTION : Applique ces modifications graphiques et génère les fichiers pour les nouvelles pages maintenant.

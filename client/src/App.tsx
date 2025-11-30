@@ -19,6 +19,8 @@ import LegalNotice from "@/pages/LegalNotice";
 import TermsOfService from "@/pages/TermsOfService";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import CookiePolicy from "@/pages/CookiePolicy";
+import FAQ from "@/pages/FAQ";
+import HelpCenter from "@/pages/HelpCenter";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -38,6 +40,8 @@ function Router() {
       <Route path="/legal/terms" component={TermsOfService} />
       <Route path="/legal/privacy" component={PrivacyPolicy} />
       <Route path="/legal/cookies" component={CookiePolicy} />
+      <Route path="/faq" component={FAQ} />
+      <Route path="/aide" component={HelpCenter} />
       <Route component={NotFound} />
     </Switch>
   );

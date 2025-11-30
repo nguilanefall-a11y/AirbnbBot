@@ -80,7 +80,17 @@ export default function Pricing() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
         >
-          <h1 className="text-4xl font-bold mb-4">{t.pricingPage.title}</h1>
+          <h1 
+            className="text-4xl font-bold mb-4"
+            style={{
+              background: 'linear-gradient(to bottom, hsl(var(--foreground)) 0%, hsl(var(--foreground) / 0.7) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
+          >
+            {t.pricingPage.title}
+          </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             {t.pricingPage.subtitle}
           </p>
@@ -201,13 +211,26 @@ export default function Pricing() {
         </motion.div>
 
         <motion.div 
-          className="text-center mt-12 space-y-2 text-sm text-muted-foreground"
+          className="text-center mt-12 space-y-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.5, duration: 0.6 }}
         >
-          <p>{t.pricingPage.paymentMethods}</p>
-          <p>{t.pricingPage.noCommitment}</p>
+          <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
+            <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50">
+              <Check className="w-4 h-4 text-primary" />
+              {t.pricingPage.noCommitment}
+            </span>
+            <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50">
+              <Check className="w-4 h-4 text-primary" />
+              Sans carte bancaire requise
+            </span>
+            <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50">
+              <Check className="w-4 h-4 text-primary" />
+              Annulation à tout moment
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground/80">{t.pricingPage.paymentMethods}</p>
         </motion.div>
       </div>
     </div>

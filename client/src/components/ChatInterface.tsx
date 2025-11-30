@@ -96,7 +96,9 @@ export default function ChatInterface() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
     >
-      <Card className="flex flex-col h-[700px] overflow-hidden shadow-2xl border-2 bg-gradient-to-br from-background via-background to-muted/20">
+      <Card 
+        className="flex flex-col h-[700px] overflow-hidden border shadow-xl bg-background/80 dark:bg-background/60 backdrop-blur-xl border-border/50"
+      >
         {/* Header with glassmorphism */}
         <motion.div 
           className="p-5 border-b border-border/50 bg-background/95 backdrop-blur-xl"
