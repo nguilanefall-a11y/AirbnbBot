@@ -5,8 +5,9 @@ import Stripe from "stripe";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
 import { insertPropertySchema, insertConversationSchema, insertMessageSchema, insertMessageFeedbackSchema, insertResponseTemplateSchema, insertTeamMemberSchema, insertNotificationSchema } from "@shared/schema";
-import { generateChatResponse, extractAirbnbInfo, extractAirbnbInfoFromText } from "./gemini";
+import { generateChatResponse, generateChatResponseWithFallback, extractAirbnbInfo, extractAirbnbInfoFromText } from "./gemini";
 import { scrapeAirbnbWithPlaywright } from "./airbnb-playwright";
+import { registerCleaningRoutes } from "./cleaning-routes";
 
 // Initialize Stripe (optional - only needed for subscription features)
 const stripe = process.env.STRIPE_SECRET_KEY 
@@ -95,6 +96,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   setupAuth(app);
 
+  // Register cleaning module routes (Section Ménage Intelligente)
+  registerCleaningRoutes(app);
+
   // User profile route (protected)
   app.get("/api/user", isAuthenticated, async (req: any, res) => {
     try {
@@ -157,6 +161,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * GET /api/reservation/:accessKey - Portail Unifié de Réservation
+   * 
+   * Récupère les données complètes pour le lien unique envoyé au voyageur.
+   * Gère la logique de déblocage 24h avant le check-in.
+   * 
+   * Retourne:
+   * - booking: informations de la réservation
+   * - property: informations du logement
+   * - arrivalInfo: statut de déblocage avec timer
+   * - canChat: si le chat est disponible
+   */
+  app.get("/api/reservation/:accessKey", async (req, res) => {
+    try {
+      const { accessKey } = req.params;
+      
+      // 1. Chercher d'abord dans les réservations (bookings)
+      let booking = await storage.getBookingByAccessKey(accessKey);
+      let property = null;
+      
+      if (booking) {
+        // Booking trouvé - récupérer la propriété associée
+        property = await storage.getProperty(booking.propertyId);
+      } else {
+        // 2. Fallback: chercher par accessKey de propriété (ancien système)
+        property = await storage.getPropertyByAccessKey(accessKey);
+        
+        if (property) {
+          // Chercher une réservation active pour cette propriété
+          booking = await storage.getActiveBookingForProperty(property.id);
+          
+          // Si pas de booking, créer un booking virtuel pour la compatibilité
+          if (!booking) {
+            booking = {
+              id: 'virtual-' + property.id,
+              propertyId: property.id,
+              guestName: null,
+              checkInDate: new Date(), // Aujourd'hui par défaut
+              checkOutDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // +7 jours
+              status: 'confirmed',
+              accessKey: accessKey,
+            } as any;
+          }
+        }
+      }
+      
+      if (!property || !booking) {
+        return res.status(404).json({ 
+          error: "Réservation non trouvée",
+          message: "Ce lien n'est pas valide ou a expiré. Veuillez contacter votre hôte."
+        });
+      }
+      
+      // 3. Calculer la logique de déblocage 24h avant le check-in
+      const now = new Date();
+      const checkInDate = new Date(booking.checkInDate);
+      const checkOutDate = new Date(booking.checkOutDate);
+      
+      // Parser l'heure de check-in (format "HH:MM")
+      const checkInTime = property.checkInTime || "15:00";
+      const [checkInHour, checkInMinute] = checkInTime.split(":").map(Number);
+      
+      // Date exacte du check-in avec l'heure
+      const checkInDateTime = new Date(checkInDate);
+      checkInDateTime.setHours(checkInHour, checkInMinute, 0, 0);
+      
+      // 24 heures avant le check-in
+      const unlockDateTime = new Date(checkInDateTime);
+      unlockDateTime.setHours(unlockDateTime.getHours() - 24);
+      
+      // Calculer si débloqué et temps restant
+      const isUnlocked = now >= unlockDateTime && now <= checkOutDate;
+      const hoursUntilUnlock = Math.max(0, Math.ceil((unlockDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)));
+      
+      let unlockMessage = "";
+      if (isUnlocked) {
+        unlockMessage = "Bienvenue ! Toutes les informations d'accès sont disponibles.";
+      } else if (now < unlockDateTime) {
+        unlockMessage = `Les informations d'arrivée seront disponibles le ${unlockDateTime.toLocaleDateString('fr-FR', { 
+          weekday: 'long', 
+          day: 'numeric', 
+          month: 'long' 
+        })} à ${unlockDateTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.`;
+      } else {
+        unlockMessage = "Cette réservation est terminée.";
+      }
+      
+      // 4. Retourner les données complètes
+      res.json({
+        booking: {
+          id: booking.id,
+          propertyId: booking.propertyId,
+          guestName: booking.guestName,
+          checkInDate: checkInDate.toISOString(),
+          checkOutDate: checkOutDate.toISOString(),
+          status: booking.status,
+        },
+        property: property,
+        arrivalInfo: {
+          unlocked: isUnlocked,
+          unlocksAt: unlockDateTime.toISOString(),
+          hoursUntilUnlock: hoursUntilUnlock,
+          message: unlockMessage,
+        },
+        canChat: true, // Le chat est toujours disponible
+      });
+    } catch (error) {
+      console.error("Error fetching reservation:", error);
+      res.status(500).json({ error: "Failed to fetch reservation data" });
+    }
+  });
+
   // Check if guest is within J-1 window (for arrival info visibility)
   app.get("/api/arrival-eligibility/:propertyId", async (req, res) => {
     try {
@@ -207,6 +323,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error checking arrival eligibility:", error);
       res.status(500).json({ error: "Failed to check arrival eligibility" });
+    }
+  });
+
+  // ========================================
+  // EXPORT iCAL - Génère un lien .ics pour Airbnb
+  // ========================================
+  app.get("/api/calendar/:propertyId/export.ics", async (req, res) => {
+    try {
+      const { propertyId } = req.params;
+      
+      // Récupérer la propriété
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).send("Property not found");
+      }
+
+      // Récupérer les réservations
+      const bookings = await storage.getBookingsByProperty(propertyId);
+
+      // Helper pour formater les dates en YYYYMMDD
+      const formatDate = (d: Date) => {
+        if (!d || isNaN(d.getTime())) return null;
+        return d.toISOString().split('T')[0].replace(/-/g, '');
+      };
+
+      // Générer le calendrier iCal
+      const now = new Date();
+      const nowFormatted = formatDate(now);
+      
+      // Filtrer et mapper les réservations valides
+      const icalEvents = bookings
+        .filter((booking: any) => {
+          // Vérifier que les dates existent et sont valides
+          if (!booking.checkInDate || !booking.checkOutDate) return false;
+          const checkIn = new Date(booking.checkInDate);
+          const checkOut = new Date(booking.checkOutDate);
+          return !isNaN(checkIn.getTime()) && !isNaN(checkOut.getTime());
+        })
+        .map((booking: any) => {
+          const checkIn = new Date(booking.checkInDate);
+          const checkOut = new Date(booking.checkOutDate);
+          const uid = `${booking.id}@assistant-airbnb.ai`;
+          
+          return `BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${nowFormatted}T000000Z
+DTSTART;VALUE=DATE:${formatDate(checkIn)}
+DTEND;VALUE=DATE:${formatDate(checkOut)}
+SUMMARY:${booking.guestName || 'Réservation'} - ${property.name}
+DESCRIPTION:Réservation via Assistant Airbnb IA
+STATUS:CONFIRMED
+END:VEVENT`;
+        }).join('\n');
+
+      const icalContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Assistant Airbnb IA//Calendrier//FR
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:${property.name}
+X-WR-TIMEZONE:Europe/Paris
+${icalEvents}
+END:VCALENDAR`;
+
+      // Envoyer le fichier iCal
+      res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${property.name.replace(/[^a-zA-Z0-9]/g, '_')}.ics"`);
+      res.send(icalContent);
+    } catch (error) {
+      console.error("Error exporting iCal:", error);
+      res.status(500).send("Failed to export calendar");
+    }
+  });
+
+  // Endpoint pour obtenir l'URL d'export iCal d'une propriété
+  app.get("/api/properties/:id/ical-export-url", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const property = await storage.getProperty(id);
+      
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      // Vérifier que l'utilisateur est propriétaire
+      if (property.userId !== req.user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Générer l'URL d'export
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const exportUrl = `${baseUrl}/api/calendar/${id}/export.ics`;
+
+      res.json({ 
+        exportUrl,
+        propertyName: property.name,
+        instructions: "Copiez ce lien et collez-le dans Airbnb > Calendrier > Paramètres > Importer un calendrier"
+      });
+    } catch (error) {
+      console.error("Error getting iCal export URL:", error);
+      res.status(500).json({ error: "Failed to get export URL" });
     }
   });
 
@@ -1144,6 +1361,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error deleting team member:", error);
       res.status(400).json({ error: error?.message || "Failed to delete team member" });
+    }
+  });
+
+  // ========================================
+  // SOS / URGENCE ROUTES
+  // ========================================
+
+  /**
+   * POST /api/sos - Envoyer une alerte d'urgence
+   * Accessible sans authentification (voyageurs)
+   */
+  app.post("/api/sos", async (req, res) => {
+    try {
+      const { propertyId, message, timestamp } = req.body;
+
+      if (!propertyId) {
+        return res.status(400).json({ error: "Property ID required" });
+      }
+
+      // Récupérer la propriété et le propriétaire
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      // Créer une notification urgente pour le propriétaire
+      if (property.userId) {
+        await storage.createNotification({
+          userId: property.userId,
+          type: "in_app",
+          category: "urgent",
+          subject: "🚨 ALERTE SOS - Urgence voyageur",
+          content: `Un voyageur a déclenché une alerte SOS pour ${property.name}. Message: ${message || "Pas de détails fournis"}`,
+          metadata: {
+            propertyId,
+            alertType: "sos",
+            timestamp,
+            requiresAction: true,
+          },
+        });
+      }
+
+      console.log(`🚨 SOS Alert for property ${property.name}: ${message}`);
+
+      res.json({ 
+        success: true, 
+        message: "SOS alert sent to host",
+        hostName: property.hostName,
+      });
+    } catch (error: any) {
+      console.error("Error sending SOS:", error);
+      res.status(500).json({ error: error?.message || "Failed to send SOS" });
+    }
+  });
+
+  /**
+   * POST /api/widget-chat - Endpoint pour le widget embeddable
+   * Accessible sans authentification
+   */
+  app.post("/api/widget-chat", async (req, res) => {
+    try {
+      const { propertyId, message } = req.body;
+
+      if (!propertyId || !message) {
+        return res.status(400).json({ error: "Property ID and message required" });
+      }
+
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      // Utiliser la version avec fallback pour garantir une réponse
+      const response = await generateChatResponseWithFallback(message, property);
+
+      res.json({ response });
+    } catch (error: any) {
+      console.error("Widget chat error:", error);
+      res.status(500).json({ 
+        error: "Chat error",
+        response: "Désolé, je ne peux pas répondre pour le moment. Veuillez contacter l'hôte directement."
+      });
+    }
+  });
+
+  /**
+   * POST /api/export/conversations/pdf - Exporter les conversations en PDF
+   */
+  app.post("/api/export/conversations/pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { propertyId, startDate, endDate } = req.body;
+
+      // Vérifier la propriété
+      if (propertyId) {
+        const property = await storage.getProperty(propertyId);
+        if (!property || property.userId !== userId) {
+          return res.status(404).json({ error: "Property not found" });
+        }
+      }
+
+      const conversations = propertyId 
+        ? await storage.getConversationsByProperty(propertyId)
+        : [];
+
+      const allMessages = await Promise.all(
+        conversations.map(c => storage.getMessagesByConversation(c.id))
+      );
+
+      // Générer un HTML simple pour le PDF (le client peut utiliser html2pdf.js)
+      let html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Export Conversations - AirbnbBot</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; }
+            h1 { color: #e11d48; }
+            .conversation { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+            .message { margin: 10px 0; padding: 10px; border-radius: 8px; }
+            .bot { background: #f3f4f6; }
+            .user { background: #fee2e2; }
+            .meta { font-size: 12px; color: #666; }
+          </style>
+        </head>
+        <body>
+          <h1>📊 Export des Conversations</h1>
+          <p>Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+      `;
+
+      conversations.forEach((conv, idx) => {
+        const messages = allMessages[idx];
+        html += `
+          <div class="conversation">
+            <h3>Conversation avec ${conv.guestName}</h3>
+            <p class="meta">ID: ${conv.id} | Créée le: ${new Date(conv.createdAt).toLocaleDateString('fr-FR')}</p>
+        `;
+        
+        messages.forEach(msg => {
+          html += `
+            <div class="message ${msg.isBot ? 'bot' : 'user'}">
+              <strong>${msg.isBot ? '🤖 Bot' : '👤 Voyageur'}</strong>
+              <p>${msg.content}</p>
+              <span class="meta">${new Date(msg.createdAt).toLocaleTimeString('fr-FR')}</span>
+            </div>
+          `;
+        });
+
+        html += `</div>`;
+      });
+
+      html += `</body></html>`;
+
+      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Content-Disposition', `attachment; filename=conversations-export-${Date.now()}.html`);
+      res.send(html);
+    } catch (error: any) {
+      console.error("Error exporting PDF:", error);
+      res.status(500).json({ error: error?.message || "Failed to export" });
     }
   });
 

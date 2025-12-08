@@ -47,7 +47,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);
-      window.location.href = "/host";
+      // Redirection selon le rôle
+      // @ts-ignore - role exists in schema
+      if (user.role === "cleaning_agent") {
+        window.location.href = "/cleaner-dashboard";
+      } else {
+        window.location.href = "/host";
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -59,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const registerMutation = useMutation({
-    mutationFn: async (credentials: RegisterUser) => {
+    mutationFn: async (credentials: RegisterUser & { role?: string }) => {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -74,7 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);
-      window.location.href = "/host";
+      // Redirection selon le rôle
+      // @ts-ignore - role exists in schema
+      if (user.role === "cleaning_agent") {
+        window.location.href = "/cleaner-dashboard";
+      } else {
+        window.location.href = "/host";
+      }
     },
     onError: (error: Error) => {
       toast({

@@ -30,7 +30,7 @@ const faqCategories = [
     ]
   },
   {
-    title: "Fonctionnement du Lien Voyageur",
+    title: "Comment ça marche : Lien Voyageur",
     questions: [
       {
         q: "Comment fonctionne le lien voyageur ?",

@@ -2,6 +2,7 @@ import LandingHeader from "@/components/LandingHeader";
 import LandingHero from "@/components/LandingHero";
 import FeaturesSection from "@/components/FeaturesSection";
 import HowItWorksSection from "@/components/HowItWorksSection";
+import TrustSection from "@/components/TrustSection";
 import ChatDemoSection from "@/components/ChatDemoSection";
 import ContactSection from "@/components/ContactSection";
 import CTASection from "@/components/CTASection";
@@ -33,6 +34,7 @@ export default function Landing() {
           <div id="how-it-works">
             <HowItWorksSection />
           </div>
+          <TrustSection />
           <ChatDemoSection />
           <div id="contact">
             <ContactSection />

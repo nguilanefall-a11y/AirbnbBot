@@ -1,0 +1,51 @@
+{
+  "name": "AirbnbBot - Assistant IA pour Hôtes",
+  "short_name": "AirbnbBot",
+  "description": "Assistant IA intelligent pour gérer vos locations Airbnb et répondre automatiquement à vos voyageurs",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#e11d48",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "fr",
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/host",
+      "description": "Accéder au tableau de bord"
+    },
+    {
+      "name": "Messages",
+      "url": "/chat",
+      "description": "Voir les conversations"
+    },
+    {
+      "name": "Ménage",
+      "url": "/cleaning",
+      "description": "Gérer le ménage"
+    }
+  ]
+}
+
+

@@ -3,6 +3,7 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
+import bcrypt from "bcrypt";
 import { storage } from "./storage";
 import { User, registerSchema, loginSchema } from "@shared/schema";
 
@@ -15,16 +16,27 @@ declare global {
 const scryptAsync = promisify(scrypt);
 
 export async function hashPassword(password: string) {
-  const salt = randomBytes(16).toString("hex");
-  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${buf.toString("hex")}.${salt}`;
+  // Use bcrypt for new passwords (more standard)
+  return bcrypt.hash(password, 10);
 }
 
 async function comparePasswords(supplied: string, stored: string) {
-  const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+  // Check if it's a bcrypt hash (starts with $2)
+  if (stored.startsWith("$2")) {
+    return bcrypt.compare(supplied, stored);
+  }
+  
+  // Legacy scrypt format (hash.salt)
+  try {
+    const [hashed, salt] = stored.split(".");
+    if (!hashed || !salt) return false;
+    const hashedBuf = Buffer.from(hashed, "hex");
+    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    if (hashedBuf.length !== suppliedBuf.length) return false;
+    return timingSafeEqual(hashedBuf, suppliedBuf);
+  } catch {
+    return false;
+  }
 }
 
 export function setupAuth(app: Express) {
@@ -64,6 +76,8 @@ export function setupAuth(app: Express) {
   app.post("/api/register", async (req, res, next) => {
     try {
       const data = registerSchema.parse(req.body);
+      // Accepter le rôle depuis le body (host ou cleaning_agent)
+      const role = req.body.role === "cleaning_agent" ? "cleaning_agent" : "host";
       
       const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
@@ -74,6 +88,7 @@ export function setupAuth(app: Express) {
       const user = await storage.createUser({
         ...data,
         password: hashedPassword,
+        role, // Inclure le rôle
       });
 
       req.login(user, (err) => {

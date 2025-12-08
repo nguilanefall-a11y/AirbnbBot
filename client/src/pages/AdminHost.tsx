@@ -279,15 +279,17 @@ export default function AdminHost() {
                 Importé le {lastImportedAt.toLocaleDateString()} à {lastImportedAt.toLocaleTimeString()}
               </Badge>
             )}
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setIsImportDialogOpen(true)}
-              data-testid="button-import"
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Importer depuis Airbnb
-            </Button>
+            <Link href="/host-cleaning">
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="gap-2 bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:border-emerald-800 dark:text-emerald-300"
+                data-testid="button-cleaning-space"
+              >
+                <Sparkles className="w-4 h-4" />
+                Espace Agent de Ménage
+              </Button>
+            </Link>
             {currentUser && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -312,12 +314,18 @@ export default function AdminHost() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
+                    <Link href="/host-cleaning">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Gestion Ménage
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link href="/analytics">
                       <BarChart3 className="w-4 h-4 mr-2" />
                       Analytics
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link href="/settings">
                       <SettingsIcon className="w-4 h-4 mr-2" />
                       Paramètres
@@ -504,37 +512,60 @@ export default function AdminHost() {
                   <Card className="p-6 mt-6 bg-background/80 backdrop-blur-xl border-border/50 shadow-lg">
                     <h3 className="font-semibold mb-3 flex items-center gap-2">
                       <LinkIcon className="w-4 h-4" />
-                      Lien Voyageur
+                      Liens Voyageur
                     </h3>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Partagez ce lien avec vos voyageurs pour qu'ils puissent poser des questions
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={copyGuestLink}
-                      data-testid="button-copy-link"
-                    >
-                      {copied ? (
-                        <motion.div
-                          className="flex items-center"
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={{ type: "spring", stiffness: 300 }}
-                        >
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          Copié!
-                        </motion.div>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4 mr-2" />
-                          Copier le lien
-                        </>
-                      )}
-                    </Button>
-                    <div className="mt-2 p-2 bg-muted rounded text-xs font-mono break-all">
-                      {window.location.origin}/guest/{selectedProperty.accessKey}
+                    
+                    {/* Nouveau lien unifié */}
+                    <div className="mb-4 p-3 rounded-lg bg-primary/10 border border-primary/20">
+                      <p className="text-sm font-medium text-primary mb-2 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4" />
+                        Portail Unifié (recommandé)
+                      </p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Livre d'accueil + Chat IA + Demandes spéciales
+                      </p>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="w-full mb-2"
+                        onClick={() => {
+                          const link = `${window.location.origin}/r/${selectedProperty.accessKey}`;
+                          navigator.clipboard.writeText(link);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                          toast({
+                            title: "Lien copié!",
+                            description: "Partagez ce lien avec vos voyageurs",
+                          });
+                        }}
+                        data-testid="button-copy-portal-link"
+                      >
+                        {copied ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                            Copié!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4 mr-2" />
+                            Copier le lien portail
+                          </>
+                        )}
+                      </Button>
+                      <div className="p-2 bg-background rounded text-xs font-mono break-all">
+                        {window.location.origin}/r/{selectedProperty.accessKey}
+                      </div>
                     </div>
+                    
+                    {/* Ancien lien (compatibilité) */}
+                    <details className="text-sm">
+                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
+                        Lien classique (ancien format)
+                      </summary>
+                      <div className="mt-2 p-2 bg-muted rounded text-xs font-mono break-all">
+                        {window.location.origin}/guest/{selectedProperty.accessKey}
+                      </div>
+                    </details>
                   </Card>
                 </motion.div>
               )}
@@ -1018,7 +1049,7 @@ export default function AdminHost() {
                       <div className="bg-muted/50 p-4 rounded-lg space-y-2">
                         <div className="flex items-center gap-2">
                           <Clock className="w-4 h-4 text-primary" />
-                          <span className="font-medium">Fonctionnement</span>
+                          <span className="font-medium">Comment ça marche ?</span>
                         </div>
                         <p className="text-sm text-muted-foreground">
                           Le contenu ci-dessous (message et vidéo) sera affiché au voyageur uniquement à partir de J-1 (la veille de son check-in). 

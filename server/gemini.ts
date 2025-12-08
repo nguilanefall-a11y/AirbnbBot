@@ -461,3 +461,185 @@ Retourne UNIQUEMENT un objet JSON avec ces champs (utilise null si manquant):
     throw new Error(error?.message || "Échec de l'extraction depuis le texte fourni.");
   }
 }
+
+// ========================================
+// DÉTECTION DE SENTIMENT
+// ========================================
+
+export type Sentiment = "positive" | "neutral" | "negative" | "urgent";
+
+interface SentimentResult {
+  sentiment: Sentiment;
+  score: number; // -1 à 1
+  isUrgent: boolean;
+  needsAttention: boolean;
+  keywords: string[];
+}
+
+const NEGATIVE_KEYWORDS = [
+  "problème", "problem", "broken", "cassé", "pas", "ne fonctionne pas", "doesn't work",
+  "dirty", "sale", "déçu", "disappointed", "terrible", "horrible", "worst", "pire",
+  "refund", "remboursement", "complaint", "plainte", "unacceptable", "inacceptable",
+  "angry", "furieux", "upset", "énervé", "frustrated", "frustré"
+];
+
+const URGENT_KEYWORDS = [
+  "urgence", "urgent", "emergency", "help", "aide", "sos", "danger", "fire", "feu",
+  "flood", "inondation", "leak", "fuite", "locked out", "bloqué", "accident",
+  "medical", "médical", "police", "ambulance", "immediately", "immédiatement"
+];
+
+const POSITIVE_KEYWORDS = [
+  "merci", "thank", "excellent", "amazing", "wonderful", "perfect", "parfait",
+  "love", "adore", "great", "génial", "super", "fantastic", "beautiful", "magnifique",
+  "recommend", "recommande", "happy", "content", "satisfied", "satisfait"
+];
+
+/**
+ * Analyse le sentiment d'un message
+ */
+export function analyzeSentiment(message: string): SentimentResult {
+  const lowerMessage = message.toLowerCase();
+  
+  let score = 0;
+  const foundKeywords: string[] = [];
+  
+  // Vérifier les mots urgents
+  const urgentMatches = URGENT_KEYWORDS.filter(k => lowerMessage.includes(k));
+  if (urgentMatches.length > 0) {
+    foundKeywords.push(...urgentMatches);
+    return {
+      sentiment: "urgent",
+      score: -1,
+      isUrgent: true,
+      needsAttention: true,
+      keywords: foundKeywords,
+    };
+  }
+  
+  // Vérifier les mots négatifs
+  const negativeMatches = NEGATIVE_KEYWORDS.filter(k => lowerMessage.includes(k));
+  score -= negativeMatches.length * 0.3;
+  foundKeywords.push(...negativeMatches);
+  
+  // Vérifier les mots positifs
+  const positiveMatches = POSITIVE_KEYWORDS.filter(k => lowerMessage.includes(k));
+  score += positiveMatches.length * 0.3;
+  foundKeywords.push(...positiveMatches);
+  
+  // Limiter le score entre -1 et 1
+  score = Math.max(-1, Math.min(1, score));
+  
+  let sentiment: Sentiment;
+  if (score < -0.3) {
+    sentiment = "negative";
+  } else if (score > 0.3) {
+    sentiment = "positive";
+  } else {
+    sentiment = "neutral";
+  }
+  
+  return {
+    sentiment,
+    score,
+    isUrgent: false,
+    needsAttention: sentiment === "negative",
+    keywords: foundKeywords,
+  };
+}
+
+// ========================================
+// RÉPONSES DE BACKUP (quand l'IA échoue)
+// ========================================
+
+interface BackupResponse {
+  keywords: string[];
+  response: string;
+}
+
+const BACKUP_RESPONSES: BackupResponse[] = [
+  {
+    keywords: ["wifi", "internet", "connexion", "password", "mot de passe"],
+    response: "📶 Pour le WiFi, veuillez consulter les informations affichées près du routeur ou contacter votre hôte directement pour obtenir le nom du réseau et le mot de passe.",
+  },
+  {
+    keywords: ["check-in", "arrivée", "arriver", "clé", "clés", "entrée"],
+    response: "🔑 Pour votre arrivée, veuillez vérifier les instructions de check-in envoyées par votre hôte. En cas de problème, n'hésitez pas à le contacter directement.",
+  },
+  {
+    keywords: ["check-out", "départ", "partir", "quitter"],
+    response: "🚪 Pour le départ, assurez-vous de suivre les instructions de check-out de votre hôte. Généralement, il faut rendre les clés et laisser le logement propre.",
+  },
+  {
+    keywords: ["urgence", "aide", "problème", "sos", "emergency"],
+    response: "🚨 En cas d'urgence : Appelez le 112 (urgences européennes), 15 (SAMU), 17 (Police), ou 18 (Pompiers). Contactez également votre hôte immédiatement.",
+  },
+  {
+    keywords: ["parking", "voiture", "garer", "stationnement"],
+    response: "🚗 Pour le stationnement, veuillez consulter les informations de votre hôte ou vérifier les panneaux de signalisation locaux.",
+  },
+  {
+    keywords: ["restaurant", "manger", "nourriture", "dîner", "déjeuner"],
+    response: "🍽️ Pour trouver des restaurants, je vous recommande de consulter Google Maps ou TripAdvisor pour découvrir les meilleures options près du logement.",
+  },
+  {
+    keywords: ["transport", "métro", "bus", "taxi", "uber"],
+    response: "🚇 Pour les transports, consultez l'application Google Maps pour les itinéraires en transport en commun, ou utilisez Uber/Bolt pour les taxis.",
+  },
+  {
+    keywords: ["chauffage", "climatisation", "température", "froid", "chaud"],
+    response: "🌡️ Pour le chauffage ou la climatisation, vérifiez le thermostat du logement. Si vous avez des difficultés, contactez votre hôte pour des instructions.",
+  },
+  {
+    keywords: ["lave", "linge", "machine", "laver", "sécher"],
+    response: "🧺 Pour le lave-linge, vérifiez s'il y en a un dans le logement et consultez les instructions près de l'appareil si disponibles.",
+  },
+  {
+    keywords: ["bonjour", "hello", "salut", "hi", "coucou"],
+    response: "👋 Bonjour ! Je suis l'assistant de ce logement. Comment puis-je vous aider aujourd'hui ?",
+  },
+];
+
+/**
+ * Obtient une réponse de backup basée sur les mots-clés du message
+ */
+export function getBackupResponse(message: string): string | null {
+  const lowerMessage = message.toLowerCase();
+  
+  for (const backup of BACKUP_RESPONSES) {
+    if (backup.keywords.some(keyword => lowerMessage.includes(keyword))) {
+      return backup.response;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Génère une réponse avec fallback sur les réponses de backup
+ */
+export async function generateChatResponseWithFallback(
+  message: string,
+  property: Property
+): Promise<string> {
+  try {
+    // Essayer d'abord l'IA
+    return await generateChatResponse(message, property);
+  } catch (error) {
+    console.warn("AI failed, trying backup responses:", error);
+    
+    // Essayer les réponses de backup
+    const backupResponse = getBackupResponse(message);
+    if (backupResponse) {
+      return backupResponse + "\n\n⚠️ _Réponse automatique - Contactez votre hôte pour plus de détails._";
+    }
+    
+    // Réponse par défaut si rien ne correspond
+    return `Désolé, je ne peux pas répondre à votre question pour le moment. 
+
+📞 Veuillez contacter votre hôte ${property.hostName || ''} directement :
+${property.hostPhone ? `📱 Téléphone : ${property.hostPhone}` : ''}
+
+🚨 En cas d'urgence : 112 (Europe) | 15 (SAMU) | 17 (Police) | 18 (Pompiers)`;
+  }
+}

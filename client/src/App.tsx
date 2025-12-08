@@ -21,6 +21,15 @@ import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import CookiePolicy from "@/pages/CookiePolicy";
 import FAQ from "@/pages/FAQ";
 import HelpCenter from "@/pages/HelpCenter";
+import Cleaning from "@/pages/Cleaning";
+import GuestRequest from "@/pages/GuestRequest";
+import ReservationPortal from "@/pages/ReservationPortal";
+import CleanerPortal from "@/pages/CleanerPortal";
+import CleanerDashboard from "@/pages/CleanerDashboard";
+import CleaningAgentDashboard from "@/pages/CleaningAgentDashboard";
+import HostCleaningManagement from "@/pages/HostCleaningManagement";
+import HostCalendar from "@/pages/HostCalendar";
+import AgentCalendar from "@/pages/AgentCalendar";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -36,6 +45,23 @@ function Router() {
       <Route path="/subscribe" component={Subscribe} />
       <Route path="/settings" component={Settings} />
       <Route path="/analytics" component={Analytics} />
+      <Route path="/cleaning" component={Cleaning} />
+      <Route path="/request/:token" component={GuestRequest} />
+      {/* Nouveau Portail Unifié de Réservation */}
+      <Route path="/r/:accessKey" component={ReservationPortal} />
+      <Route path="/r/:accessKey/:section" component={ReservationPortal} />
+      {/* Portail Ménage pour le staff */}
+      <Route path="/cleaner/:accessToken" component={CleanerPortal} />
+      {/* Dashboard Cleaning Agent (avec authentification) */}
+      <Route path="/cleaner-dashboard" component={CleanerDashboard} />
+      {/* Alternative CleaningAgent Dashboard */}
+      <Route path="/agent-dashboard" component={CleaningAgentDashboard} />
+      {/* Host Cleaning Management */}
+      <Route path="/host-cleaning" component={HostCleaningManagement} />
+      {/* Calendrier Hôte */}
+      <Route path="/host-calendar" component={HostCalendar} />
+      {/* Calendrier Agent */}
+      <Route path="/agent-calendar" component={AgentCalendar} />
       <Route path="/legal/legal-notice" component={LegalNotice} />
       <Route path="/legal/terms" component={TermsOfService} />
       <Route path="/legal/privacy" component={PrivacyPolicy} />

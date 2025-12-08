@@ -11,11 +11,17 @@ export default function ChatInterface() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isInitialMount = useRef(true);
   const [messages, setMessages] = useState([
     { id: 1, message: "Bonjour ! 👋 Je suis l'assistant IA de l'Appartement Élégant Paris 8e - Champs-Élysées. Je peux répondre à plus de 1000 questions pré-configurées sur tous les aspects de votre séjour, et je m'adapte en temps réel à vos questions spécifiques ! WiFi, équipements, check-in, restaurants, transports, tourisme, ou tout autre sujet - n'hésitez pas à me poser n'importe quelle question !", isBot: true, timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }
   ]);
 
+  // Scroll to bottom only when NEW messages are added (not on initial mount)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 

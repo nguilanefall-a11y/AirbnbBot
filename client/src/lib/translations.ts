@@ -33,7 +33,7 @@ export const translations = {
         }
       },
       howItWorks: {
-        title: "Fonctionnement",
+        title: "Comment ça marche ?",
         subtitle: "Quatre étapes simples",
         step1: {
           title: "Créez votre compte",

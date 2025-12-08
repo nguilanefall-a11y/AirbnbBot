@@ -6,6 +6,7 @@ import session from "express-session";
 import passport from "passport";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { startAutoSync } from "./ical-service";
 
 const app = express();
 
@@ -95,5 +96,11 @@ app.use((req, res, next) => {
   const port = parseInt(process.env.PORT || '5000', 10);
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
+    
+    // Démarrer la synchronisation automatique des calendriers iCal
+    // Sync toutes les 30 minutes par défaut
+    const syncInterval = parseInt(process.env.ICAL_SYNC_INTERVAL_MINUTES || '30', 10);
+    startAutoSync(syncInterval);
+    log(`iCal auto-sync enabled (every ${syncInterval} minutes)`);
   });
 })();

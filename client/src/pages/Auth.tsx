@@ -1,21 +1,29 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MessageSquare, Loader2, ArrowLeft } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { MessageSquare, Loader2, ArrowLeft, Sparkles, Home, Users } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, loginSchema } from "@shared/schema";
 import { z } from "zod";
 import { motion, AnimatePresence } from "framer-motion";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import waveBackground from "@assets/image_1764527682604.png";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const { user, loginMutation, registerMutation } = useAuth();
+  
+  // Récupérer le rôle depuis l'URL (?role=cleaning_agent)
+  const searchString = useSearch();
+  const isCleaningAgent = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    return params.get("role") === "cleaning_agent";
+  }, [searchString]);
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -27,9 +35,15 @@ export default function Auth() {
     defaultValues: { email: "", password: "", firstName: "", lastName: "" },
   });
 
+  // Redirection selon le rôle de l'utilisateur
   useEffect(() => {
     if (user) {
-      window.location.href = "/host";
+      // @ts-ignore - role est défini dans le schéma
+      if (user.role === "cleaning_agent") {
+        window.location.href = "/cleaner-dashboard";
+      } else {
+        window.location.href = "/host";
+      }
     }
   }, [user]);
 
@@ -38,7 +52,9 @@ export default function Auth() {
   };
 
   const onRegister = (data: z.infer<typeof registerSchema>) => {
-    registerMutation.mutate(data);
+    // Inclure le rôle basé sur l'URL
+    const role = isCleaningAgent ? "cleaning_agent" : "host";
+    registerMutation.mutate({ ...data, role } as any);
   };
 
   return (
@@ -82,19 +98,45 @@ export default function Auth() {
             <Card className="w-full max-w-md shadow-xl bg-background/80 backdrop-blur-xl border-border/50">
             <CardHeader className="space-y-1">
               <motion.div 
-                className="flex items-center gap-2 justify-center mb-4"
+                className="flex flex-col items-center gap-3 mb-4"
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2, duration: 0.5 }}
               >
-                <motion.div 
-                  className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center"
-                  whileHover={{ rotate: 360, scale: 1.1 }}
-                  transition={{ duration: 0.5 }}
+                {/* Badge indicateur du type de compte */}
+                <Badge 
+                  variant="secondary" 
+                  className={`text-xs ${isCleaningAgent ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' : 'bg-primary/10 text-primary'}`}
                 >
-                  <MessageSquare className="w-6 h-6 text-primary-foreground" />
-                </motion.div>
-                <span className="text-2xl font-bold bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Assistant Airbnb IA</span>
+                  {isCleaningAgent ? (
+                    <>
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Espace Agent de Ménage
+                    </>
+                  ) : (
+                    <>
+                      <Home className="w-3 h-3 mr-1" />
+                      Espace Hôte
+                    </>
+                  )}
+                </Badge>
+                
+                <div className="flex items-center gap-2">
+                  <motion.div 
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center ${isCleaningAgent ? 'bg-emerald-500' : 'bg-primary'}`}
+                    whileHover={{ rotate: 360, scale: 1.1 }}
+                    transition={{ duration: 0.5 }}
+                  >
+                    {isCleaningAgent ? (
+                      <Sparkles className="w-6 h-6 text-white" />
+                    ) : (
+                      <MessageSquare className="w-6 h-6 text-primary-foreground" />
+                    )}
+                  </motion.div>
+                  <span className="text-2xl font-bold bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">
+                    {isCleaningAgent ? "Ménage Pro" : "Assistant Airbnb IA"}
+                  </span>
+                </div>
               </motion.div>
               <AnimatePresence mode="wait">
                 <motion.div
@@ -229,6 +271,29 @@ export default function Auth() {
                     </p>
                   )}
                 </div>
+                
+                {/* Indicateur du type de compte */}
+                <div className={`p-3 rounded-lg border-2 ${isCleaningAgent ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800' : 'bg-primary/5 border-primary/20'}`}>
+                  <div className="flex items-center gap-2">
+                    {isCleaningAgent ? (
+                      <>
+                        <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Compte Agent de Ménage</span>
+                      </>
+                    ) : (
+                      <>
+                        <Home className="w-4 h-4 text-primary" />
+                        <span className="text-sm font-medium">Compte Hôte</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {isCleaningAgent 
+                      ? "Vous pourrez voir les calendriers partagés par vos hôtes" 
+                      : "Vous pourrez gérer vos propriétés et créer des agents"}
+                  </p>
+                </div>
+                
                 <Button
                   type="submit"
                   className="w-full"
@@ -286,49 +351,110 @@ export default function Auth() {
         </div>
       </motion.div>
 
-      <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary/20 to-primary/5 p-12 items-center justify-center relative z-10">
+      <div className={`hidden lg:flex lg:flex-1 p-12 items-center justify-center relative z-10 ${isCleaningAgent ? 'bg-gradient-to-br from-emerald-500/20 to-emerald-500/5' : 'bg-gradient-to-br from-primary/20 to-primary/5'}`}>
         <div className="max-w-md space-y-6">
-          <h2 className="text-4xl font-medium bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">
-            Assistant IA pour hôtes Airbnb
-          </h2>
-          <p className="text-lg text-muted-foreground">
-            Automatisez vos communications avec vos voyageurs grâce à l'intelligence artificielle.
-          </p>
-          <ul className="space-y-4">
-            <li className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5">
-                ✓
-              </div>
-              <div>
-                <p className="font-semibold">Essai gratuit 7 jours</p>
-                <p className="text-sm text-muted-foreground">
-                  Sans carte bancaire requise
-                </p>
-              </div>
-            </li>
-            <li className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5">
-                ✓
-              </div>
-              <div>
-                <p className="font-semibold">29,90€ par propriété/mois</p>
-                <p className="text-sm text-muted-foreground">
-                  Tarification simple et transparente
-                </p>
-              </div>
-            </li>
-            <li className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5">
-                ✓
-              </div>
-              <div>
-                <p className="font-semibold">Réponses instantanées 24/7</p>
-                <p className="text-sm text-muted-foreground">
-                  L'IA répond à vos voyageurs automatiquement
-                </p>
-              </div>
-            </li>
-          </ul>
+          {isCleaningAgent ? (
+            <>
+              <h2 className="text-4xl font-medium bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">
+                Espace Agent de Ménage
+              </h2>
+              <p className="text-lg text-muted-foreground">
+                Gérez vos tâches de ménage et communiquez avec vos hôtes efficacement.
+              </p>
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5 text-white text-sm">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="font-semibold">Calendrier synchronisé</p>
+                    <p className="text-sm text-muted-foreground">
+                      Voyez tous vos ménages prévus
+                    </p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5 text-white text-sm">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="font-semibold">Signaler des problèmes</p>
+                    <p className="text-sm text-muted-foreground">
+                      Notifiez les hôtes des anomalies
+                    </p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5 text-white text-sm">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="font-semibold">Accès mobile</p>
+                    <p className="text-sm text-muted-foreground">
+                      Application responsive sur tous les appareils
+                    </p>
+                  </div>
+                </li>
+              </ul>
+            </>
+          ) : (
+            <>
+              <h2 className="text-4xl font-medium bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">
+                Assistant IA pour hôtes Airbnb
+              </h2>
+              <p className="text-lg text-muted-foreground">
+                Automatisez vos communications avec vos voyageurs grâce à l'intelligence artificielle.
+              </p>
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 text-primary-foreground text-sm">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="font-semibold">Essai gratuit 7 jours</p>
+                    <p className="text-sm text-muted-foreground">
+                      Sans carte bancaire requise
+                    </p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 text-primary-foreground text-sm">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="font-semibold">29,90€ par propriété/mois</p>
+                    <p className="text-sm text-muted-foreground">
+                      Tarification simple et transparente
+                    </p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 text-primary-foreground text-sm">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="font-semibold">Réponses instantanées 24/7</p>
+                    <p className="text-sm text-muted-foreground">
+                      L'IA répond à vos voyageurs automatiquement
+                    </p>
+                  </div>
+                </li>
+              </ul>
+            </>
+          )}
+          
+          {/* Lien pour changer de type de compte */}
+          <div className="pt-4 border-t border-border/50">
+            <p className="text-sm text-muted-foreground mb-2">
+              {isCleaningAgent ? "Vous êtes un hôte ?" : "Vous êtes un agent de ménage ?"}
+            </p>
+            <Link href={isCleaningAgent ? "/auth" : "/auth?role=cleaning_agent"}>
+              <Button variant="outline" size="sm" className="gap-2">
+                {isCleaningAgent ? <Home className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                {isCleaningAgent ? "Espace Hôte" : "Espace Agent de Ménage"}
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </div>
