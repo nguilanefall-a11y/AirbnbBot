@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "dev:watch": "NODE_ENV=development tsx watch server/index.ts",
@@ -90,7 +93,9 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0"
+    "zod-validation-error": "^3.4.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.5"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.4.1",
