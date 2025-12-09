@@ -2105,5 +2105,219 @@ export function registerCleaningRoutes(app: Express) {
       res.status(500).json({ error: error.message || "Failed to create cleaning task" });
     }
   });
+
+  // ========================================
+  // EXPORT iCAL PERMANENTS
+  // ========================================
+
+  /**
+   * GET /api/cleaner-calendar/:cleanerId/export.ics
+   * 
+   * LIEN PERMANENT pour agents de ménage - pas d'expiration
+   * Exportable vers Google Calendar, Apple Calendar, etc.
+   */
+  app.get("/api/cleaner-calendar/:cleanerId/export.ics", async (req, res) => {
+    try {
+      const database = ensureDb();
+      const { cleanerId } = req.params;
+
+      // Vérifier que l'utilisateur cleaner existe
+      const [cleaner] = await database.select().from(users)
+        .where(and(eq(users.id, cleanerId), eq(users.role, "cleaning_agent")));
+
+      if (!cleaner) {
+        return res.status(404).send("Cleaner not found");
+      }
+
+      // Récupérer les propriétés assignées à ce cleaner
+      const assignments = await database.select({
+        propertyId: propertyAssignments.propertyId,
+        propertyName: properties.name,
+      })
+        .from(propertyAssignments)
+        .innerJoin(properties, eq(properties.id, propertyAssignments.propertyId))
+        .where(and(
+          eq(propertyAssignments.cleanerUserId, cleanerId),
+          eq(propertyAssignments.isActive, true),
+          eq(propertyAssignments.canViewCalendar, true)
+        ));
+
+      const propertyIds = assignments.map(a => a.propertyId);
+
+      // Récupérer les tâches de nettoyage pour ces propriétés
+      const now = new Date();
+      const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+      const sixMonthsAhead = new Date(now.getFullYear(), now.getMonth() + 6, 0);
+
+      let tasks: any[] = [];
+      if (propertyIds.length > 0) {
+        tasks = await database.select({
+          id: cleaningTasks.id,
+          propertyId: cleaningTasks.propertyId,
+          propertyName: properties.name,
+          scheduledDate: cleaningTasks.scheduledDate,
+          scheduledStartTime: cleaningTasks.scheduledStartTime,
+          scheduledEndTime: cleaningTasks.scheduledEndTime,
+          status: cleaningTasks.status,
+          notes: cleaningTasks.notes,
+        })
+          .from(cleaningTasks)
+          .innerJoin(properties, eq(properties.id, cleaningTasks.propertyId))
+          .where(and(
+            sql`${cleaningTasks.propertyId} IN (${sql.raw(propertyIds.map(id => `'${id}'`).join(','))})`,
+            gte(cleaningTasks.scheduledDate, threeMonthsAgo),
+            lte(cleaningTasks.scheduledDate, sixMonthsAhead)
+          ));
+      }
+
+      // Récupérer les indisponibilités du cleaner
+      const unavailabilities = await database.select().from(cleanerUnavailability)
+        .where(and(
+          eq(cleanerUnavailability.cleanerUserId, cleanerId),
+          gte(cleanerUnavailability.endDate, threeMonthsAgo),
+          lte(cleanerUnavailability.startDate, sixMonthsAhead)
+        ));
+
+      // Générer le calendrier iCal
+      const formatDate = (d: Date) => d.toISOString().split('T')[0].replace(/-/g, '');
+      const formatDateTime = (d: Date, time: string) => {
+        const [hour, minute] = (time || "00:00").split(':');
+        const dt = new Date(d);
+        dt.setHours(parseInt(hour, 10), parseInt(minute, 10), 0, 0);
+        return dt.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      };
+
+      const nowFormatted = formatDate(now);
+
+      // Événements de nettoyage
+      const cleaningEvents = tasks.map(task => {
+        const taskDate = new Date(task.scheduledDate);
+        const uid = `cleaning-${task.id}@assistant-airbnb.ai`;
+        
+        return `BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${nowFormatted}T000000Z
+DTSTART:${formatDateTime(taskDate, task.scheduledStartTime || "11:00")}
+DTEND:${formatDateTime(taskDate, task.scheduledEndTime || "15:00")}
+SUMMARY:🧹 Ménage - ${task.propertyName}
+DESCRIPTION:Statut: ${task.status}${task.notes ? `\\nNotes: ${task.notes}` : ''}
+LOCATION:${task.propertyName}
+STATUS:${task.status === 'completed' ? 'COMPLETED' : 'CONFIRMED'}
+END:VEVENT`;
+      }).join('\n');
+
+      // Événements d'indisponibilité
+      const unavailabilityEvents = unavailabilities.map(u => {
+        const uid = `unavail-${u.id}@assistant-airbnb.ai`;
+        const startDate = new Date(u.startDate);
+        const endDate = new Date(u.endDate);
+        
+        return `BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${nowFormatted}T000000Z
+DTSTART;VALUE=DATE:${formatDate(startDate)}
+DTEND;VALUE=DATE:${formatDate(endDate)}
+SUMMARY:🚫 Indisponible${u.reason ? ` - ${u.reason}` : ''}
+DESCRIPTION:Indisponibilité personnelle
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+END:VEVENT`;
+      }).join('\n');
+
+      const allEvents = [cleaningEvents, unavailabilityEvents].filter(Boolean).join('\n');
+
+      const icalContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Assistant Airbnb IA//Calendrier Ménage//FR
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Calendrier Ménage - ${cleaner.firstName || 'Agent'}
+X-WR-TIMEZONE:Europe/Paris
+${allEvents}
+END:VCALENDAR`;
+
+      res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="cleaning-calendar-${cleanerId}.ics"`);
+      res.send(icalContent);
+    } catch (error: any) {
+      console.error("Error exporting cleaner calendar:", error);
+      res.status(500).send("Failed to export calendar");
+    }
+  });
+
+  /**
+   * GET /api/cleaner/my-ical-url
+   * 
+   * Retourne l'URL PERMANENTE du calendrier iCal pour le cleaner connecté
+   */
+  app.get("/api/cleaner/my-ical-url", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = req.user;
+
+      if (user.role !== "cleaning_agent") {
+        return res.status(403).json({ error: "Only cleaning agents can access this" });
+      }
+
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const exportUrl = `${baseUrl}/api/cleaner-calendar/${userId}/export.ics`;
+
+      res.json({
+        exportUrl,
+        cleanerName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        instructions: "Copiez ce lien et ajoutez-le dans Google Calendar, Apple Calendar ou tout autre calendrier compatible iCal.",
+        isPermanent: true,
+        note: "Ce lien est permanent et n'expire jamais. Ne le partagez pas avec d'autres personnes."
+      });
+    } catch (error: any) {
+      console.error("Error getting cleaner iCal URL:", error);
+      res.status(500).json({ error: error.message || "Failed to get iCal URL" });
+    }
+  });
+
+  /**
+   * GET /api/host/calendar-share-url/:propertyId
+   * 
+   * Génère une URL PERMANENTE que l'hôte peut partager avec ses agents de ménage
+   */
+  app.get("/api/host/calendar-share-url/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const database = ensureDb();
+      const userId = req.user.id;
+      const { propertyId } = req.params;
+
+      // Vérifier que la propriété appartient à l'hôte
+      const [property] = await database.select().from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.userId, userId)));
+
+      if (!property) {
+        return res.status(404).json({ error: "Property not found or access denied" });
+      }
+
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      
+      // L'URL d'export utilise le propertyId (qui est permanent)
+      const exportUrl = `${baseUrl}/api/calendar/${propertyId}/export.ics`;
+      
+      // URL pour importer dans Airbnb
+      const airbnbImportUrl = exportUrl;
+
+      res.json({
+        propertyName: property.name,
+        exportUrl,
+        airbnbImportUrl,
+        isPermanent: true,
+        instructions: {
+          forCleaners: "Partagez ce lien avec vos agents de ménage pour qu'ils puissent voir le calendrier des réservations.",
+          forAirbnb: "Copiez ce lien et collez-le dans Airbnb > Calendrier > Paramètres > Importer un calendrier",
+          forGoogleCalendar: "Ouvrez Google Calendar > Paramètres > Ajouter un calendrier > À partir d'une URL",
+          forAppleCalendar: "Fichier > Nouvel abonnement à un calendrier > Collez l'URL"
+        }
+      });
+    } catch (error: any) {
+      console.error("Error getting share URL:", error);
+      res.status(500).json({ error: error.message || "Failed to get share URL" });
+    }
+  });
 }
 
