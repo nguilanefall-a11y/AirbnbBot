@@ -223,8 +223,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // 3. Calculer la logique de déblocage 24h avant le check-in
       const now = new Date();
-      const checkInDate = new Date(booking.checkInDate);
-      const checkOutDate = new Date(booking.checkOutDate);
+      
+      console.log(`[API] Raw booking.checkInDate:`, booking.checkInDate, typeof booking.checkInDate);
+      console.log(`[API] Raw booking.checkOutDate:`, booking.checkOutDate, typeof booking.checkOutDate);
+      
+      // Gérer les dates qui peuvent être string ou Date
+      let checkInDate: Date;
+      let checkOutDate: Date;
+      
+      try {
+        if (booking.checkInDate instanceof Date && !isNaN(booking.checkInDate.getTime())) {
+          checkInDate = booking.checkInDate;
+        } else if (typeof booking.checkInDate === 'string') {
+          checkInDate = new Date(booking.checkInDate);
+        } else {
+          checkInDate = new Date(); // Fallback
+        }
+        
+        if (booking.checkOutDate instanceof Date && !isNaN(booking.checkOutDate.getTime())) {
+          checkOutDate = booking.checkOutDate;
+        } else if (typeof booking.checkOutDate === 'string') {
+          checkOutDate = new Date(booking.checkOutDate);
+        } else {
+          checkOutDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // Fallback +7 jours
+        }
+        
+        // Vérifier que les dates sont valides
+        if (isNaN(checkInDate.getTime())) {
+          console.log(`[API] Invalid checkInDate, using today`);
+          checkInDate = new Date();
+        }
+        if (isNaN(checkOutDate.getTime())) {
+          console.log(`[API] Invalid checkOutDate, using +7 days`);
+          checkOutDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        }
+      } catch (dateError) {
+        console.error(`[API] Date parsing error:`, dateError);
+        checkInDate = new Date();
+        checkOutDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      }
+      
+      console.log(`[API] Dates parsed - checkIn: ${checkInDate}, checkOut: ${checkOutDate}`);
       
       // Parser l'heure de check-in (format "HH:MM")
       const checkInTime = property.checkInTime || "15:00";
