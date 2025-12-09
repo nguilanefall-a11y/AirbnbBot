@@ -99,6 +99,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register cleaning module routes (Section Ménage Intelligente)
   registerCleaningRoutes(app);
 
+  // Health check endpoint for Render
+  app.get("/api/health", async (req, res) => {
+    try {
+      // Simple health check - verify DB connection by making a simple query
+      const testUser = await storage.getUserByEmail("health-check-test@test.com");
+      res.json({ 
+        status: "ok", 
+        timestamp: new Date().toISOString(),
+        database: "connected"
+      });
+    } catch (error: any) {
+      console.error("[Health Check] Database error:", error?.message);
+      res.status(503).json({ 
+        status: "degraded", 
+        timestamp: new Date().toISOString(),
+        database: "error",
+        error: error?.message
+      });
+    }
+  });
+
   // User profile route (protected)
   app.get("/api/user", isAuthenticated, async (req: any, res) => {
     try {
