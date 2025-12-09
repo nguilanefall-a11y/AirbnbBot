@@ -176,24 +176,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/reservation/:accessKey", async (req, res) => {
     try {
       const { accessKey } = req.params;
+      console.log(`[API] /api/reservation/${accessKey} - Starting lookup`);
       
       // 1. Chercher d'abord dans les réservations (bookings)
       let booking = await storage.getBookingByAccessKey(accessKey);
+      console.log(`[API] Booking found by accessKey:`, booking ? 'yes' : 'no');
       let property = null;
       
       if (booking) {
         // Booking trouvé - récupérer la propriété associée
         property = await storage.getProperty(booking.propertyId);
+        console.log(`[API] Property found by booking.propertyId:`, property ? 'yes' : 'no');
       } else {
         // 2. Fallback: chercher par accessKey de propriété (ancien système)
         property = await storage.getPropertyByAccessKey(accessKey);
+        console.log(`[API] Property found by accessKey:`, property ? 'yes' : 'no');
         
         if (property) {
           // Chercher une réservation active pour cette propriété
           booking = await storage.getActiveBookingForProperty(property.id);
+          console.log(`[API] Active booking for property:`, booking ? 'yes' : 'no');
           
           // Si pas de booking, créer un booking virtuel pour la compatibilité
           if (!booking) {
+            console.log(`[API] Creating virtual booking`);
             booking = {
               id: 'virtual-' + property.id,
               propertyId: property.id,
@@ -208,6 +214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (!property || !booking) {
+        console.log(`[API] Reservation not found - property:`, !!property, 'booking:', !!booking);
         return res.status(404).json({ 
           error: "Réservation non trouvée",
           message: "Ce lien n'est pas valide ou a expiré. Veuillez contacter votre hôte."
@@ -267,9 +274,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         canChat: true, // Le chat est toujours disponible
       });
-    } catch (error) {
-      console.error("Error fetching reservation:", error);
-      res.status(500).json({ error: "Failed to fetch reservation data" });
+    } catch (error: any) {
+      console.error("[API] Error fetching reservation:", error?.message || error);
+      console.error("[API] Stack:", error?.stack);
+      res.status(500).json({ 
+        error: "Failed to fetch reservation data",
+        details: process.env.NODE_ENV !== 'production' ? error?.message : undefined
+      });
     }
   });
 
