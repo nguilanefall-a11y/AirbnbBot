@@ -568,14 +568,29 @@ export class PgStorage implements IStorage {
 
   async createUser(userData: { email: string; password: string; firstName?: string | null; lastName?: string | null }): Promise<User> {
     const database = this.ensureDb();
-    const result = await database.insert(users).values({
-      email: userData.email,
-      password: userData.password,
-      firstName: userData.firstName ?? null,
-      lastName: userData.lastName ?? null,
-      activePropertyCount: "0",
-    }).returning();
-    return result[0];
+    
+    // Vérification explicite de l'unicité avant insertion
+    const existing = await this.getUserByEmail(userData.email);
+    if (existing) {
+      throw new Error("Un compte existe déjà avec cet email");
+    }
+    
+    try {
+      const result = await database.insert(users).values({
+        email: userData.email,
+        password: userData.password,
+        firstName: userData.firstName ?? null,
+        lastName: userData.lastName ?? null,
+        activePropertyCount: "0",
+      }).returning();
+      return result[0];
+    } catch (error: any) {
+      // Capturer les erreurs de contrainte unique PostgreSQL
+      if (error.code === '23505' || error.message?.includes('unique constraint') || error.message?.includes('duplicate key')) {
+        throw new Error("Un compte existe déjà avec cet email");
+      }
+      throw error;
+    }
   }
 
   async upsertUser(user: UpsertUser): Promise<User> {
