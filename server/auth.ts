@@ -58,18 +58,27 @@ export function setupAuth(app: Express) {
     )
   );
 
-  passport.serializeUser((user, done) => done(null, user.id));
+  passport.serializeUser((user, done) => {
+    console.log(`[AUTH] Session serialized for user: ${user.id}`);
+    done(null, user.id);
+  });
+  
   passport.deserializeUser(async (id: string, done) => {
     try {
       const user = await storage.getUser(id);
       if (user) {
         const { password: _, ...userWithoutPassword } = user;
+        console.log(`[AUTH] Session deserialized for user: ${id}`);
         done(null, userWithoutPassword);
       } else {
+        // Utilisateur n'existe plus - nettoyer la session
+        console.warn(`[AUTH] User not found during deserialization: ${id} - session will be invalidated`);
         done(null, false);
       }
-    } catch (error) {
-      done(error);
+    } catch (error: any) {
+      console.error(`[AUTH] Error deserializing user ${id}:`, error.message);
+      // En cas d'erreur, invalider la session pour éviter les boucles
+      done(null, false);
     }
   });
 
@@ -118,24 +127,47 @@ export function setupAuth(app: Express) {
     try {
       loginSchema.parse(req.body);
       passport.authenticate("local", (err: any, user: any) => {
-        if (err) return next(err);
+        if (err) {
+          console.error("[AUTH] Login error:", err.message);
+          return next(err);
+        }
         if (!user) {
+          console.warn(`[AUTH] Login failed for email: ${req.body.email}`);
           return res.status(401).json({ message: "Email ou mot de passe incorrect" });
         }
         req.login(user, (err) => {
-          if (err) return next(err);
+          if (err) {
+            console.error(`[AUTH] Session creation failed for user ${user.id}:`, err.message);
+            return next(err);
+          }
+          console.log(`[AUTH] Session created for user: ${user.id} (${user.email})`);
           res.json(user);
         });
       })(req, res, next);
     } catch (error: any) {
+      console.error("[AUTH] Login validation error:", error.message);
       res.status(400).json({ message: error.message || "Erreur lors de la connexion" });
     }
   });
 
-  app.post("/api/logout", (req, res, next) => {
-    req.logout((err) => {
-      if (err) return next(err);
-      res.sendStatus(200);
+  app.post("/api/logout", (req: any, res, next) => {
+    const userId = req.user?.id;
+    req.logout((err: any) => {
+      if (err) {
+        console.error("[AUTH] Logout error:", err.message);
+        return next(err);
+      }
+      if (userId) {
+        console.log(`[AUTH] User logged out: ${userId}`);
+      }
+      // Détruire la session explicitement
+      req.session.destroy((err: any) => {
+        if (err) {
+          console.error("[AUTH] Session destruction error:", err.message);
+        }
+        res.clearCookie('airbnb.session');
+        res.sendStatus(200);
+      });
     });
   });
 
@@ -148,6 +180,11 @@ export function setupAuth(app: Express) {
       const userId = req.user.id;
       const user = await storage.getUser(userId);
       if (!user) {
+        // Utilisateur n'existe plus - nettoyer la session
+        console.warn(`[AUTH] User ${userId} not found, destroying session`);
+        req.logout(() => {
+          req.session.destroy(() => {});
+        });
         return res.status(404).json({ message: "Utilisateur non trouvé" });
       }
 
@@ -163,8 +200,8 @@ export function setupAuth(app: Express) {
 
       const { password: _, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
-    } catch (error) {
-      console.error("Error fetching user:", error);
+    } catch (error: any) {
+      console.error(`[AUTH] Error fetching user ${req.user?.id}:`, error.message);
       res.status(500).json({ message: "Erreur serveur" });
     }
   });
