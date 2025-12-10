@@ -23,10 +23,22 @@ if (process.env.DATABASE_URL) {
   try {
     pool = new Pool({ 
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false } // Nécessaire pour Supabase
+      ssl: process.env.DATABASE_URL?.includes('neon.tech') 
+        ? { rejectUnauthorized: false } 
+        : process.env.DATABASE_URL?.includes('supabase.co') || process.env.DATABASE_URL?.includes('pooler.supabase.com')
+        ? { 
+            rejectUnauthorized: false,
+            require: true 
+          }
+        : undefined,
+      connectionTimeoutMillis: 60000,
+      idleTimeoutMillis: 30000,
+      max: 10,
     });
     db = drizzle(pool, { schema });
-    console.log("✅ Database connection initialized (Supabase)");
+    const dbType = process.env.DATABASE_URL?.includes('neon.tech') ? 'Neon' : 
+                   process.env.DATABASE_URL?.includes('supabase.co') ? 'Supabase' : 'PostgreSQL';
+    console.log(`✅ Database connection initialized (${dbType})`);
   } catch (error) {
     console.error("⚠️  Failed to initialize database:", error);
   }

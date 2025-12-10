@@ -1,5 +1,7 @@
 {
   "npm.runSilent": false,
-  "terminal.integrated.defaultProfile.osx": "zsh"
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "cursor.chat.autoApprove": true,
+  "cursor.general.autoApprove": true
 }
 

@@ -39,6 +39,9 @@ export const users = pgTable("users", {
   trialEndsAt: timestamp("trial_ends_at"),
   activePropertyCount: varchar("active_property_count").default("0"),
   
+  // Token permanent pour synchronisation iCal - pour les cleaning agents
+  icalSyncToken: varchar("ical_sync_token").unique(), // Token unique permanent pour l'export iCal
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -111,6 +114,9 @@ export const properties = pgTable("properties", {
   lastImportedAt: timestamp("last_imported_at"),
   icalUrl: text("ical_url"), // URL du calendrier iCal pour synchronisation
   cleaningPersonId: varchar("cleaning_person_id"), // ID de la personne responsable du ménage
+  
+  // Token permanent pour synchronisation iCal
+  icalSyncToken: varchar("ical_sync_token").unique(), // Token unique permanent pour l'export iCal
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

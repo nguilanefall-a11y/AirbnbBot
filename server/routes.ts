@@ -120,32 +120,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User profile route (protected)
-  app.get("/api/user", isAuthenticated, async (req: any, res) => {
+  // Test endpoint pour vérifier les tables
+  app.get("/api/test-db", async (req, res) => {
     try {
-      const userId = req.user.id;
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
+      const { pool } = await import("./db");
+      if (!pool) {
+        return res.status(500).json({ error: "Database pool not initialized" });
       }
-      
-      // Return only safe, non-sensitive user data
-      const safeUserData = {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        profileImageUrl: user.profileImageUrl,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-      };
-      
-      res.json(safeUserData);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ error: "Failed to fetch user" });
+
+      const client = await pool.connect();
+      try {
+        // Vérifier les tables principales
+        const tables = [
+          'users', 'properties', 'bookings', 'conversations', 'messages',
+          'cleaning_staff', 'cleaning_tasks', 'cleaning_notes', 'property_assignments',
+          'cleaner_unavailability', 'blocked_periods', 'sessions'
+        ];
+
+        const results: Record<string, boolean> = {};
+        for (const table of tables) {
+          try {
+            const result = await client.query(
+              `SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+              [table]
+            );
+            results[table] = parseInt(result.rows[0].count) > 0;
+          } catch (err: any) {
+            results[table] = false;
+          }
+        }
+
+        // Test d'une requête simple
+        let queryTest = false;
+        try {
+          await client.query('SELECT COUNT(*) FROM users');
+          queryTest = true;
+        } catch (err: any) {
+          queryTest = false;
+        }
+
+        res.json({
+          status: "ok",
+          tables: results,
+          queryTest,
+          totalTables: Object.values(results).filter(Boolean).length,
+          missingTables: Object.entries(results).filter(([_, exists]) => !exists).map(([name]) => name)
+        });
+      } finally {
+        client.release();
+      }
+    } catch (error: any) {
+      res.status(500).json({ 
+        error: "Database test failed", 
+        message: error?.message,
+        code: error?.code
+      });
     }
   });
+
+  // Note: /api/user route is defined in auth.ts (setupAuth)
+  // This route is handled by the auth middleware
 
   // Properties routes - Get user's own properties (protected)
   app.get("/api/properties", isAuthenticated, async (req: any, res) => {
@@ -399,15 +433,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ========================================
   // EXPORT iCAL - Génère un lien .ics pour Airbnb
+  // Supporte deux modes : par ID (legacy) ou par token (permanent, sans authentification)
   // ========================================
-  app.get("/api/calendar/:propertyId/export.ics", async (req, res) => {
+  app.get("/api/calendar/:identifier/export.ics", async (req, res) => {
     try {
-      const { propertyId } = req.params;
+      const { identifier } = req.params;
+      const { token } = req.query; // Supporte aussi ?token=xxx
       
-      // Récupérer la propriété
-      const property = await storage.getProperty(propertyId);
-      if (!property) {
-        return res.status(404).send("Property not found");
+      let property = null;
+      
+      // Mode 1: Token permanent (accès sans authentification, prioritaire)
+      if (token && typeof token === 'string') {
+        const { getPropertyByICalToken } = await import("./ical-tokens");
+        property = await getPropertyByICalToken(token);
+        if (!property) {
+          return res.status(404).send("Invalid token or property not found");
+        }
+      } else {
+        // Mode 2: ID direct (legacy, pour compatibilité)
+        property = await storage.getProperty(identifier);
+        if (!property) {
+          return res.status(404).send("Property not found");
+        }
       }
 
       // Récupérer les réservations
@@ -468,7 +515,7 @@ END:VCALENDAR`;
     }
   });
 
-  // Endpoint pour obtenir l'URL d'export iCal d'une propriété
+  // Endpoint pour obtenir l'URL d'export iCal PERMANENTE d'une propriété (avec token)
   app.get("/api/properties/:id/ical-export-url", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -483,18 +530,69 @@ END:VCALENDAR`;
         return res.status(403).json({ error: "Access denied" });
       }
 
-      // Générer l'URL d'export
+      // Générer ou récupérer le token permanent
+      const { getOrCreatePropertyICalToken } = await import("./ical-tokens");
+      const token = await getOrCreatePropertyICalToken(id);
+
+      // Générer l'URL d'export PERMANENTE avec token
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-      const exportUrl = `${baseUrl}/api/calendar/${id}/export.ics`;
+      const exportUrl = `${baseUrl}/api/calendar/${id}/export.ics?token=${token}`;
 
       res.json({ 
         exportUrl,
+        permanentUrl: exportUrl, // Alias pour clarté
+        token: token, // Token pour référence
         propertyName: property.name,
-        instructions: "Copiez ce lien et collez-le dans Airbnb > Calendrier > Paramètres > Importer un calendrier"
+        isPermanent: true,
+        neverExpires: true,
+        instructions: {
+          forAirbnb: "Copiez ce lien et collez-le dans Airbnb > Calendrier > Paramètres > Importer un calendrier",
+          forGoogleCalendar: "Ouvrez Google Calendar > Paramètres > Ajouter un calendrier > À partir d'une URL",
+          forAppleCalendar: "Fichier > Nouvel abonnement à un calendrier > Collez l'URL",
+          forCleaners: "Partagez ce lien avec vos agents de ménage pour qu'ils puissent voir le calendrier des réservations"
+        },
+        note: "Ce lien est permanent et n'expire jamais. Il fonctionne sans authentification."
       });
     } catch (error) {
       console.error("Error getting iCal export URL:", error);
       res.status(500).json({ error: "Failed to get export URL" });
+    }
+  });
+  
+  // Endpoint pour régénérer le token iCal d'une propriété (invalide l'ancien)
+  app.post("/api/properties/:id/regenerate-ical-token", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const property = await storage.getProperty(id);
+      
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      // Vérifier que l'utilisateur est propriétaire
+      if (property.userId !== req.user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Régénérer le token
+      const { regeneratePropertyICalToken } = await import("./ical-tokens");
+      const newToken = await regeneratePropertyICalToken(id);
+
+      // Générer la nouvelle URL
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const exportUrl = `${baseUrl}/api/calendar/${id}/export.ics?token=${newToken}`;
+
+      res.json({ 
+        exportUrl,
+        permanentUrl: exportUrl,
+        token: newToken,
+        propertyName: property.name,
+        isPermanent: true,
+        note: "L'ancien lien ne fonctionnera plus. Utilisez ce nouveau lien."
+      });
+    } catch (error) {
+      console.error("Error regenerating iCal token:", error);
+      res.status(500).json({ error: "Failed to regenerate token" });
     }
   });
 

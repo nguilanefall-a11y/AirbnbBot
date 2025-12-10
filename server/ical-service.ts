@@ -238,7 +238,7 @@ export async function syncICalForProperty(propertyId: string): Promise<{
     // Log the sync
     await db.insert(icalSyncLogs).values({
       propertyId,
-      syncStatus: "success",
+      syncStatus: "success", // Toujours spécifier explicitement
       bookingsImported: imported.toString(),
       bookingsUpdated: updated.toString(),
     });

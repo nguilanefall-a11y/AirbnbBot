@@ -2111,22 +2111,35 @@ export function registerCleaningRoutes(app: Express) {
   // ========================================
 
   /**
-   * GET /api/cleaner-calendar/:cleanerId/export.ics
+   * GET /api/cleaner-calendar/:identifier/export.ics
    * 
    * LIEN PERMANENT pour agents de ménage - pas d'expiration
+   * Supporte deux modes : par ID (legacy) ou par token (permanent, sans authentification)
    * Exportable vers Google Calendar, Apple Calendar, etc.
    */
-  app.get("/api/cleaner-calendar/:cleanerId/export.ics", async (req, res) => {
+  app.get("/api/cleaner-calendar/:identifier/export.ics", async (req, res) => {
     try {
       const database = ensureDb();
-      const { cleanerId } = req.params;
+      const { identifier } = req.params;
+      const { token } = req.query; // Supporte aussi ?token=xxx
 
-      // Vérifier que l'utilisateur cleaner existe
-      const [cleaner] = await database.select().from(users)
-        .where(and(eq(users.id, cleanerId), eq(users.role, "cleaning_agent")));
+      let cleaner = null;
 
-      if (!cleaner) {
-        return res.status(404).send("Cleaner not found");
+      // Mode 1: Token permanent (accès sans authentification, prioritaire)
+      if (token && typeof token === 'string') {
+        const { getUserByICalToken } = await import("../server/ical-tokens");
+        cleaner = await getUserByICalToken(token);
+        if (!cleaner || cleaner.role !== "cleaning_agent") {
+          return res.status(404).send("Invalid token or cleaner not found");
+        }
+      } else {
+        // Mode 2: ID direct (legacy, pour compatibilité)
+        const [foundCleaner] = await database.select().from(users)
+          .where(and(eq(users.id, identifier), eq(users.role, "cleaning_agent")));
+        cleaner = foundCleaner;
+        if (!cleaner) {
+          return res.status(404).send("Cleaner not found");
+        }
       }
 
       // Récupérer les propriétés assignées à ce cleaner
@@ -2137,7 +2150,7 @@ export function registerCleaningRoutes(app: Express) {
         .from(propertyAssignments)
         .innerJoin(properties, eq(properties.id, propertyAssignments.propertyId))
         .where(and(
-          eq(propertyAssignments.cleanerUserId, cleanerId),
+          eq(propertyAssignments.cleanerUserId, cleaner.id),
           eq(propertyAssignments.isActive, true),
           eq(propertyAssignments.canViewCalendar, true)
         ));
@@ -2173,7 +2186,7 @@ export function registerCleaningRoutes(app: Express) {
       // Récupérer les indisponibilités du cleaner
       const unavailabilities = await database.select().from(cleanerUnavailability)
         .where(and(
-          eq(cleanerUnavailability.cleanerUserId, cleanerId),
+          eq(cleanerUnavailability.cleanerUserId, cleaner.id),
           gte(cleanerUnavailability.endDate, threeMonthsAgo),
           lte(cleanerUnavailability.startDate, sixMonthsAhead)
         ));
@@ -2237,7 +2250,7 @@ ${allEvents}
 END:VCALENDAR`;
 
       res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="cleaning-calendar-${cleanerId}.ics"`);
+      res.setHeader('Content-Disposition', `attachment; filename="cleaning-calendar-${cleaner.id}.ics"`);
       res.send(icalContent);
     } catch (error: any) {
       console.error("Error exporting cleaner calendar:", error);
@@ -2248,7 +2261,7 @@ END:VCALENDAR`;
   /**
    * GET /api/cleaner/my-ical-url
    * 
-   * Retourne l'URL PERMANENTE du calendrier iCal pour le cleaner connecté
+   * Retourne l'URL PERMANENTE du calendrier iCal pour le cleaner connecté (avec token)
    */
   app.get("/api/cleaner/my-ical-url", isAuthenticated, async (req: any, res) => {
     try {
@@ -2259,26 +2272,72 @@ END:VCALENDAR`;
         return res.status(403).json({ error: "Only cleaning agents can access this" });
       }
 
+      // Générer ou récupérer le token permanent
+      const { getOrCreateUserICalToken } = await import("../server/ical-tokens");
+      const token = await getOrCreateUserICalToken(userId);
+
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-      const exportUrl = `${baseUrl}/api/cleaner-calendar/${userId}/export.ics`;
+      const exportUrl = `${baseUrl}/api/cleaner-calendar/${userId}/export.ics?token=${token}`;
 
       res.json({
         exportUrl,
+        permanentUrl: exportUrl, // Alias pour clarté
+        token: token, // Token pour référence
         cleanerName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
-        instructions: "Copiez ce lien et ajoutez-le dans Google Calendar, Apple Calendar ou tout autre calendrier compatible iCal.",
         isPermanent: true,
-        note: "Ce lien est permanent et n'expire jamais. Ne le partagez pas avec d'autres personnes."
+        neverExpires: true,
+        instructions: {
+          forGoogleCalendar: "Ouvrez Google Calendar > Paramètres > Ajouter un calendrier > À partir d'une URL",
+          forAppleCalendar: "Fichier > Nouvel abonnement à un calendrier > Collez l'URL",
+          forOther: "Copiez ce lien et ajoutez-le dans votre application de calendrier compatible iCal"
+        },
+        note: "Ce lien est permanent et n'expire jamais. Il fonctionne automatiquement sans authentification. Ne le partagez pas avec d'autres personnes."
       });
     } catch (error: any) {
       console.error("Error getting cleaner iCal URL:", error);
       res.status(500).json({ error: error.message || "Failed to get iCal URL" });
     }
   });
+  
+  /**
+   * POST /api/cleaner/regenerate-ical-token
+   * 
+   * Régénère le token iCal du cleaner (invalide l'ancien)
+   */
+  app.post("/api/cleaner/regenerate-ical-token", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const user = req.user;
+
+      if (user.role !== "cleaning_agent") {
+        return res.status(403).json({ error: "Only cleaning agents can access this" });
+      }
+
+      // Régénérer le token
+      const { regenerateUserICalToken } = await import("../server/ical-tokens");
+      const newToken = await regenerateUserICalToken(userId);
+
+      const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const exportUrl = `${baseUrl}/api/cleaner-calendar/${userId}/export.ics?token=${newToken}`;
+
+      res.json({
+        exportUrl,
+        permanentUrl: exportUrl,
+        token: newToken,
+        cleanerName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        isPermanent: true,
+        note: "L'ancien lien ne fonctionnera plus. Utilisez ce nouveau lien."
+      });
+    } catch (error: any) {
+      console.error("Error regenerating cleaner iCal token:", error);
+      res.status(500).json({ error: error.message || "Failed to regenerate token" });
+    }
+  });
 
   /**
    * GET /api/host/calendar-share-url/:propertyId
    * 
-   * Génère une URL PERMANENTE que l'hôte peut partager avec ses agents de ménage
+   * Génère une URL PERMANENTE (avec token) que l'hôte peut partager avec ses agents de ménage
    */
   app.get("/api/host/calendar-share-url/:propertyId", isAuthenticated, async (req: any, res) => {
     try {
@@ -2294,25 +2353,34 @@ END:VCALENDAR`;
         return res.status(404).json({ error: "Property not found or access denied" });
       }
 
+      // Générer ou récupérer le token permanent
+      const { getOrCreatePropertyICalToken } = await import("../server/ical-tokens");
+      const token = await getOrCreatePropertyICalToken(propertyId);
+
       const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
       
-      // L'URL d'export utilise le propertyId (qui est permanent)
-      const exportUrl = `${baseUrl}/api/calendar/${propertyId}/export.ics`;
+      // L'URL d'export PERMANENTE avec token (accès sans authentification)
+      const exportUrl = `${baseUrl}/api/calendar/${propertyId}/export.ics?token=${token}`;
       
-      // URL pour importer dans Airbnb
+      // URL pour importer dans Airbnb (même URL)
       const airbnbImportUrl = exportUrl;
 
       res.json({
         propertyName: property.name,
         exportUrl,
+        permanentUrl: exportUrl, // Alias pour clarté
         airbnbImportUrl,
+        token: token, // Token pour référence
         isPermanent: true,
+        neverExpires: true,
+        requiresAuth: false,
         instructions: {
-          forCleaners: "Partagez ce lien avec vos agents de ménage pour qu'ils puissent voir le calendrier des réservations.",
+          forCleaners: "Partagez ce lien avec vos agents de ménage pour qu'ils puissent voir le calendrier des réservations. Le lien fonctionne automatiquement sans authentification.",
           forAirbnb: "Copiez ce lien et collez-le dans Airbnb > Calendrier > Paramètres > Importer un calendrier",
           forGoogleCalendar: "Ouvrez Google Calendar > Paramètres > Ajouter un calendrier > À partir d'une URL",
           forAppleCalendar: "Fichier > Nouvel abonnement à un calendrier > Collez l'URL"
-        }
+        },
+        note: "Ce lien est permanent et n'expire jamais. Il fonctionne automatiquement sans authentification."
       });
     } catch (error: any) {
       console.error("Error getting share URL:", error);
