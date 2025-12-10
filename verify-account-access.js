@@ -94,7 +94,7 @@ async function verifyAccountAccess() {
       WHERE sess->>'passport' LIKE $1 AND expire > NOW()
     `, [`%${user.id}%`]);
 
-    console.log(`🔐 Sessions actives : ${sessionsResult.rows[0].count}\n');
+    console.log(`🔐 Sessions actives : ${sessionsResult.rows[0].count}\n`);
 
     // 5. Résumé
     console.log('✅ RÉSUMÉ :');
