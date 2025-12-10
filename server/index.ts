@@ -59,13 +59,20 @@ if (pool) {
 }
 
 // Session middleware avec store PostgreSQL
+// Configuration des cookies adaptée pour Render
+const isProduction = process.env.NODE_ENV === "production";
+const baseUrl = process.env.BASE_URL || '';
+const isHttps = baseUrl.startsWith('https://') || (!baseUrl && isProduction);
+
 app.use(session({
   store: sessionStore || undefined, // Utilise PostgreSQL si disponible, sinon mémoire
   secret: sessionSecret!,
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === "production" && process.env.BASE_URL?.startsWith('https'),
+    // En production sur Render, on utilise HTTPS donc secure: true
+    // Mais si BASE_URL n'est pas défini ou n'est pas HTTPS, on met secure: false
+    secure: isHttps,
     httpOnly: true,
     sameSite: 'lax', // Protection CSRF, compatible avec les redirections
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
@@ -74,6 +81,11 @@ app.use(session({
   },
   name: 'airbnb.session', // Nom du cookie (évite les conflits)
 }));
+
+// Log de la configuration des cookies
+if (isProduction) {
+  console.log(`[SESSION] Cookie configuration: secure=${isHttps}, baseUrl=${baseUrl || 'not set'}`);
+}
 
 // Middleware de debug pour les sessions (développement uniquement)
 if (process.env.NODE_ENV === 'development') {
