@@ -62,7 +62,10 @@ if (pool) {
 // Configuration des cookies adaptée pour Render
 const isProduction = process.env.NODE_ENV === "production";
 const baseUrl = process.env.BASE_URL || '';
-const isHttps = baseUrl.startsWith('https://') || (!baseUrl && isProduction);
+// Sur Render, les URLs sont toujours HTTPS, donc on force secure: true en production
+// Mais on permet secure: false si explicitement demandé via env var
+const forceSecure = process.env.COOKIE_SECURE !== 'false';
+const isHttps = baseUrl.startsWith('https://') || (isProduction && forceSecure);
 
 app.use(session({
   store: sessionStore || undefined, // Utilise PostgreSQL si disponible, sinon mémoire
@@ -71,7 +74,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     // En production sur Render, on utilise HTTPS donc secure: true
-    // Mais si BASE_URL n'est pas défini ou n'est pas HTTPS, on met secure: false
+    // Mais on permet secure: false si explicitement demandé
     secure: isHttps,
     httpOnly: true,
     sameSite: 'lax', // Protection CSRF, compatible avec les redirections
@@ -83,26 +86,41 @@ app.use(session({
 }));
 
 // Log de la configuration des cookies
-if (isProduction) {
-  console.log(`[SESSION] Cookie configuration: secure=${isHttps}, baseUrl=${baseUrl || 'not set'}`);
-}
+console.log(`[SESSION] Cookie configuration:`);
+console.log(`  - secure: ${isHttps}`);
+console.log(`  - baseUrl: ${baseUrl || 'not set'}`);
+console.log(`  - isProduction: ${isProduction}`);
+console.log(`  - store: ${sessionStore ? 'PostgreSQL' : 'Memory'}`);
 
-// Middleware de debug pour les sessions (développement uniquement)
-if (process.env.NODE_ENV === 'development') {
-  app.use((req: any, res, next) => {
-    if (req.path.startsWith('/api')) {
-      const sessionId = req.sessionID;
-      const isAuth = req.isAuthenticated();
-      const userId = req.user?.id;
-      
-      // Log uniquement pour les requêtes authentifiées qui échouent
-      if (!isAuth && req.path !== '/api/user' && req.path !== '/api/login' && req.path !== '/api/register') {
-        console.log(`[SESSION DEBUG] ${req.method} ${req.path} - Auth: ${isAuth}, Session: ${sessionId?.substring(0, 10)}..., User: ${userId || 'none'}`);
-      }
+// Middleware de debug pour les sessions (TOUJOURS ACTIF pour diagnostic)
+app.use((req: any, res, next) => {
+  if (req.path.startsWith('/api') && req.method !== 'GET' || req.path === '/api/properties') {
+    const sessionId = req.sessionID;
+    const isAuth = req.isAuthenticated();
+    const userId = req.user?.id;
+    const hasCookie = !!req.headers.cookie;
+    const cookieValue = req.headers.cookie?.includes('airbnb.session') ? 'present' : 'missing';
+    
+    // Log détaillé pour les requêtes importantes
+    if (req.path === '/api/properties' || req.path === '/api/user') {
+      console.log(`[SESSION] ${req.method} ${req.path}`);
+      console.log(`  - Authenticated: ${isAuth}`);
+      console.log(`  - User ID: ${userId || 'none'}`);
+      console.log(`  - Session ID: ${sessionId?.substring(0, 20) || 'none'}...`);
+      console.log(`  - Cookie header: ${cookieValue}`);
+      console.log(`  - Has cookie: ${hasCookie}`);
     }
-    next();
-  });
-}
+    
+    // Log pour les requêtes non authentifiées
+    if (!isAuth && req.path !== '/api/user' && req.path !== '/api/login' && req.path !== '/api/register' && req.path !== '/api/health') {
+      console.warn(`[SESSION] ⚠️  Unauthenticated request: ${req.method} ${req.path}`);
+      console.warn(`  - Cookie: ${cookieValue}`);
+      console.warn(`  - Session ID: ${sessionId || 'none'}`);
+      console.warn(`  - User-Agent: ${req.headers['user-agent']?.substring(0, 50)}`);
+    }
+  }
+  next();
+});
 
 // Passport middleware
 app.use(passport.initialize());
