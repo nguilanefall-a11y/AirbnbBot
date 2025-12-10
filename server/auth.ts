@@ -79,9 +79,14 @@ export function setupAuth(app: Express) {
       // Accepter le rôle depuis le body (host ou cleaning_agent)
       const role = req.body.role === "cleaning_agent" ? "cleaning_agent" : "host";
       
+      // Vérification stricte de l'unicité de l'email
       const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
-        return res.status(400).json({ message: "Un compte existe déjà avec cet email" });
+        return res.status(409).json({ 
+          message: "Un compte existe déjà avec cet email",
+          error: "EMAIL_ALREADY_EXISTS",
+          code: "DUPLICATE_EMAIL"
+        });
       }
 
       const hashedPassword = await hashPassword(data.password);
@@ -97,6 +102,14 @@ export function setupAuth(app: Express) {
         res.status(201).json(userWithoutPassword);
       });
     } catch (error: any) {
+      // Gérer spécifiquement les erreurs d'email dupliqué
+      if (error.message?.includes("existe déjà") || error.message?.includes("already exists")) {
+        return res.status(409).json({ 
+          message: "Un compte existe déjà avec cet email",
+          error: "EMAIL_ALREADY_EXISTS",
+          code: "DUPLICATE_EMAIL"
+        });
+      }
       res.status(400).json({ message: error.message || "Erreur lors de l'inscription" });
     }
   });
