@@ -172,12 +172,21 @@ export function setupAuth(app: Express) {
   });
 
   app.get("/api/user", async (req: any, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ message: "Non authentifié" });
+    // Log détaillé pour debugging
+    const sessionId = req.sessionID;
+    const isAuth = req.isAuthenticated();
+    const userId = req.user?.id;
+    
+    if (!isAuth) {
+      console.warn(`[AUTH] /api/user - Not authenticated. Session: ${sessionId?.substring(0, 10)}..., User: ${userId || 'none'}`);
+      return res.status(401).json({ 
+        message: "Non authentifié",
+        sessionId: sessionId || null,
+        hasSession: !!req.session
+      });
     }
     
     try {
-      const userId = req.user.id;
       const user = await storage.getUser(userId);
       if (!user) {
         // Utilisateur n'existe plus - nettoyer la session
@@ -199,17 +208,43 @@ export function setupAuth(app: Express) {
       }
 
       const { password: _, ...userWithoutPassword } = user;
+      console.log(`[AUTH] /api/user - Returning user: ${user.email} (${userId})`);
       res.json(userWithoutPassword);
     } catch (error: any) {
-      console.error(`[AUTH] Error fetching user ${req.user?.id}:`, error.message);
+      console.error(`[AUTH] Error fetching user ${userId}:`, error.message);
       res.status(500).json({ message: "Erreur serveur" });
     }
   });
 }
 
 export const isAuthenticated = (req: any, res: any, next: any) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "Non authentifié" });
+  // Log détaillé pour debugging
+  const isAuth = req.isAuthenticated();
+  const userId = req.user?.id;
+  const sessionId = req.sessionID;
+  
+  if (!isAuth) {
+    console.warn(`[AUTH] Unauthenticated request to ${req.method} ${req.path}`);
+    console.warn(`[AUTH] Session ID: ${sessionId}, User ID: ${userId || 'none'}`);
+    console.warn(`[AUTH] Session exists: ${!!req.session}, User in session: ${!!req.user}`);
+    
+    // Vérifier si c'est un problème de session expirée
+    if (req.session && !req.user) {
+      console.warn(`[AUTH] Session exists but user not deserialized - possible session corruption`);
+    }
+    
+    return res.status(401).json({ 
+      message: "Non authentifié",
+      error: "UNAUTHORIZED",
+      path: req.path,
+      sessionId: sessionId || null
+    });
   }
+  
+  // Log pour les requêtes authentifiées (optionnel, peut être désactivé en production)
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[AUTH] Authenticated request: ${req.method} ${req.path} by user ${userId}`);
+  }
+  
   next();
 };

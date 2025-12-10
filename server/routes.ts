@@ -20,15 +20,20 @@ async function ensurePropertyAccess(req: any, res: any, next: any) {
   try {
     const userId = req.user?.id;
     if (!userId) {
-      console.error("ensurePropertyAccess: No user ID in request");
+      console.error("[PROPERTIES] ensurePropertyAccess: No user ID in request");
+      console.error("[PROPERTIES] Request path:", req.path);
+      console.error("[PROPERTIES] Is authenticated:", req.isAuthenticated());
+      console.error("[PROPERTIES] Session ID:", req.sessionID);
       return res.status(401).json({ error: "Authentication required" });
     }
+
+    console.log(`[PROPERTIES] ensurePropertyAccess: Checking access for user ${userId}`);
 
     let user;
     try {
       user = await storage.getUser(userId);
     } catch (userError: any) {
-      console.error("ensurePropertyAccess: Error fetching user:", userError?.message || userError);
+      console.error(`[PROPERTIES] ensurePropertyAccess: Error fetching user ${userId}:`, userError?.message || userError);
       return res.status(500).json({ 
         error: "Failed to verify user",
         details: userError?.message || "Database error"
@@ -36,9 +41,11 @@ async function ensurePropertyAccess(req: any, res: any, next: any) {
     }
     
     if (!user) {
-      console.error("ensurePropertyAccess: User not found:", userId);
+      console.error(`[PROPERTIES] ensurePropertyAccess: User not found: ${userId}`);
       return res.status(404).json({ error: "User not found" });
     }
+    
+    console.log(`[PROPERTIES] ensurePropertyAccess: User found: ${user.email}, role: ${user.role}`);
 
     // Count user's existing properties
     let userProperties;
@@ -185,10 +192,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/properties", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
+      console.log(`[PROPERTIES] Fetching properties for user: ${userId}`);
+      
       const properties = await storage.getPropertiesByUser(userId);
+      console.log(`[PROPERTIES] Found ${properties.length} properties for user ${userId}`);
+      
       res.json(properties);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch properties" });
+    } catch (error: any) {
+      console.error(`[PROPERTIES] Error fetching properties for user ${req.user?.id}:`, error.message);
+      res.status(500).json({ error: "Failed to fetch properties", details: error.message });
     }
   });
 
@@ -599,8 +611,12 @@ END:VCALENDAR`;
   app.post("/api/properties", isAuthenticated, ensureHostAccess, async (req: any, res) => {
     try {
       const userId = req.user.id;
+      console.log(`[PROPERTIES] Creating property for user: ${userId}`);
+      
       const validatedData = insertPropertySchema.parse(req.body);
       const property = await storage.createProperty(validatedData, userId);
+      
+      console.log(`[PROPERTIES] Property created: ${property.id} (${property.name}) for user ${userId}`);
       
       // Update property count for subscription
       const userProperties = await storage.getPropertiesByUser(userId);
@@ -624,8 +640,12 @@ END:VCALENDAR`;
       }
       
       res.status(201).json(property);
-    } catch (error) {
-      res.status(400).json({ error: "Invalid property data" });
+    } catch (error: any) {
+      console.error(`[PROPERTIES] Error creating property for user ${req.user?.id}:`, error.message);
+      res.status(400).json({ 
+        error: "Invalid property data",
+        details: error.message || "Unknown error"
+      });
     }
   });
 

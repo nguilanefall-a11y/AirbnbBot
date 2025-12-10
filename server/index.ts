@@ -75,6 +75,23 @@ app.use(session({
   name: 'airbnb.session', // Nom du cookie (évite les conflits)
 }));
 
+// Middleware de debug pour les sessions (développement uniquement)
+if (process.env.NODE_ENV === 'development') {
+  app.use((req: any, res, next) => {
+    if (req.path.startsWith('/api')) {
+      const sessionId = req.sessionID;
+      const isAuth = req.isAuthenticated();
+      const userId = req.user?.id;
+      
+      // Log uniquement pour les requêtes authentifiées qui échouent
+      if (!isAuth && req.path !== '/api/user' && req.path !== '/api/login' && req.path !== '/api/register') {
+        console.log(`[SESSION DEBUG] ${req.method} ${req.path} - Auth: ${isAuth}, Session: ${sessionId?.substring(0, 10)}..., User: ${userId || 'none'}`);
+      }
+    }
+    next();
+  });
+}
+
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
