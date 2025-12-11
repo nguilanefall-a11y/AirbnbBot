@@ -92,9 +92,19 @@ console.log(`  - baseUrl: ${baseUrl || 'not set'}`);
 console.log(`  - isProduction: ${isProduction}`);
 console.log(`  - store: ${sessionStore ? 'PostgreSQL' : 'Memory'}`);
 
-// Middleware de debug pour les sessions (TOUJOURS ACTIF pour diagnostic)
+// Passport middleware - DOIT être initialisé AVANT le middleware de debug
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Middleware de debug pour les sessions (APRÈS Passport pour avoir accès à req.isAuthenticated)
 app.use((req: any, res, next) => {
-  if (req.path.startsWith('/api') && req.method !== 'GET' || req.path === '/api/properties') {
+  // Vérifier que req.isAuthenticated existe (ajouté par Passport)
+  if (typeof req.isAuthenticated !== 'function') {
+    console.error('[SESSION] ⚠️  req.isAuthenticated is not a function - Passport may not be initialized');
+    return next();
+  }
+
+  if (req.path.startsWith('/api') && (req.method !== 'GET' || req.path === '/api/properties')) {
     const sessionId = req.sessionID;
     const isAuth = req.isAuthenticated();
     const userId = req.user?.id;
@@ -121,10 +131,6 @@ app.use((req: any, res, next) => {
   }
   next();
 });
-
-// Passport middleware
-app.use(passport.initialize());
-app.use(passport.session());
 
 app.use((req, res, next) => {
   const start = Date.now();
