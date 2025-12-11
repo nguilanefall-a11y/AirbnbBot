@@ -39,48 +39,18 @@ async function comparePasswords(supplied: string, stored: string) {
   }
 }
 
+/**
+ * Configuration des routes d'authentification
+ * 
+ * ⚠️  NOTE : La configuration Passport elle-même est maintenant dans
+ * server/auth/passportConfig.ts et est initialisée dans server/index.ts
+ * AVANT l'appel à setupAuth().
+ * 
+ * Ce fichier contient uniquement les routes d'authentification.
+ */
 export function setupAuth(app: Express) {
-  passport.use(
-    new LocalStrategy(
-      { usernameField: "email" },
-      async (email, password, done) => {
-        try {
-          const user = await storage.getUserByEmail(email);
-          if (!user || !(await comparePasswords(password, user.password))) {
-            return done(null, false);
-          }
-          const { password: _, ...userWithoutPassword } = user;
-          return done(null, userWithoutPassword);
-        } catch (error) {
-          return done(error);
-        }
-      }
-    )
-  );
-
-  passport.serializeUser((user, done) => {
-    console.log(`[AUTH] Session serialized for user: ${user.id}`);
-    done(null, user.id);
-  });
-  
-  passport.deserializeUser(async (id: string, done) => {
-    try {
-      const user = await storage.getUser(id);
-      if (user) {
-        const { password: _, ...userWithoutPassword } = user;
-        console.log(`[AUTH] Session deserialized for user: ${id}`);
-        done(null, userWithoutPassword);
-      } else {
-        // Utilisateur n'existe plus - nettoyer la session
-        console.warn(`[AUTH] User not found during deserialization: ${id} - session will be invalidated`);
-        done(null, false);
-      }
-    } catch (error: any) {
-      console.error(`[AUTH] Error deserializing user ${id}:`, error.message);
-      // En cas d'erreur, invalider la session pour éviter les boucles
-      done(null, false);
-    }
-  });
+  // La configuration Passport est maintenant gérée par initializePassport()
+  // dans server/index.ts, donc on ne configure plus Passport ici
 
   app.post("/api/register", async (req, res, next) => {
     try {

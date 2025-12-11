@@ -1,16 +1,44 @@
+/**
+ * ============================================
+ * SERVER INDEX - ARCHITECTURE STABILISÉE
+ * ============================================
+ * 
+ * ⚠️  RÈGLE ABSOLUE : NE JAMAIS MODIFIER L'ORDRE DES MIDDLEWARES
+ * 
+ * Ordre FIXE et IMMUABLE :
+ * 1. Imports système
+ * 2. Configuration session
+ * 3. Passport initialize
+ * 4. Passport session
+ * 5. verifyPassportReady (garde-fou)
+ * 6. debugAuth (debug)
+ * 7. Middleware logging
+ * 8. Routes
+ * 9. Middleware d'erreurs
+ * 
+ * Toute modification doit être EXPLICITE et documentée.
+ */
+
 import { config } from "dotenv";
 import { resolve } from "path";
 config({ path: resolve(import.meta.dirname, "..", ".env") });
+
+// ============================================
+// 1. IMPORTS SYSTÈME (NE PAS RÉORGANISER)
+// ============================================
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
+import crypto from "crypto";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startAutoSync } from "./ical-service";
 import { startSessionCleanup } from "./session-cleanup";
 import { pool } from "./db";
-import crypto from "crypto";
+import { initializePassport } from "./auth/passportConfig";
+import { verifyPassportReady } from "./middlewares/verifyPassportReady";
+import { debugAuth } from "./middlewares/debugAuth";
 
 const app = express();
 
@@ -85,6 +113,9 @@ app.use(session({
   name: 'airbnb.session', // Nom du cookie (évite les conflits)
 }));
 
+// ============================================
+// 2. CONFIGURATION SESSION (ORDRE FIXE)
+// ============================================
 // Log de la configuration des cookies
 console.log(`[SESSION] Cookie configuration:`);
 console.log(`  - secure: ${isHttps}`);
@@ -92,46 +123,29 @@ console.log(`  - baseUrl: ${baseUrl || 'not set'}`);
 console.log(`  - isProduction: ${isProduction}`);
 console.log(`  - store: ${sessionStore ? 'PostgreSQL' : 'Memory'}`);
 
-// Passport middleware - DOIT être initialisé AVANT le middleware de debug
+// ============================================
+// 3. PASSPORT INITIALIZATION (ORDRE FIXE)
+// ============================================
+// ⚠️  CRITIQUE : Initialiser Passport AVANT toute utilisation
+initializePassport();
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Middleware de debug pour les sessions (APRÈS Passport pour avoir accès à req.isAuthenticated)
-app.use((req: any, res, next) => {
-  // Vérifier que req.isAuthenticated existe (ajouté par Passport)
-  if (typeof req.isAuthenticated !== 'function') {
-    console.error('[SESSION] ⚠️  req.isAuthenticated is not a function - Passport may not be initialized');
-    return next();
-  }
+// ============================================
+// 4. GARDE-FOU PASSPORT (ORDRE FIXE)
+// ============================================
+// ⚠️  CRITIQUE : Vérifier que Passport est prêt avant toute utilisation
+app.use(verifyPassportReady);
 
-  if (req.path.startsWith('/api') && (req.method !== 'GET' || req.path === '/api/properties')) {
-    const sessionId = req.sessionID;
-    const isAuth = req.isAuthenticated();
-    const userId = req.user?.id;
-    const hasCookie = !!req.headers.cookie;
-    const cookieValue = req.headers.cookie?.includes('airbnb.session') ? 'present' : 'missing';
-    
-    // Log détaillé pour les requêtes importantes
-    if (req.path === '/api/properties' || req.path === '/api/user') {
-      console.log(`[SESSION] ${req.method} ${req.path}`);
-      console.log(`  - Authenticated: ${isAuth}`);
-      console.log(`  - User ID: ${userId || 'none'}`);
-      console.log(`  - Session ID: ${sessionId?.substring(0, 20) || 'none'}...`);
-      console.log(`  - Cookie header: ${cookieValue}`);
-      console.log(`  - Has cookie: ${hasCookie}`);
-    }
-    
-    // Log pour les requêtes non authentifiées
-    if (!isAuth && req.path !== '/api/user' && req.path !== '/api/login' && req.path !== '/api/register' && req.path !== '/api/health') {
-      console.warn(`[SESSION] ⚠️  Unauthenticated request: ${req.method} ${req.path}`);
-      console.warn(`  - Cookie: ${cookieValue}`);
-      console.warn(`  - Session ID: ${sessionId || 'none'}`);
-      console.warn(`  - User-Agent: ${req.headers['user-agent']?.substring(0, 50)}`);
-    }
-  }
-  next();
-});
+// ============================================
+// 5. MIDDLEWARE DEBUG (ORDRE FIXE)
+// ============================================
+// ⚠️  CRITIQUE : Debug après Passport pour avoir accès à req.isAuthenticated
+app.use(debugAuth);
 
+// ============================================
+// 6. MIDDLEWARE LOGGING (ORDRE FIXE)
+// ============================================
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -162,9 +176,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// ============================================
+// 7. ROUTES (ORDRE FIXE)
+// ============================================
 (async () => {
   const server = await registerRoutes(app);
 
+  // ============================================
+  // 8. MIDDLEWARE D'ERREURS (ORDRE FIXE - TOUJOURS EN DERNIER)
+  // ============================================
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
