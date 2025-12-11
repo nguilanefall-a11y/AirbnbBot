@@ -4,7 +4,13 @@
  */
 
 import { db } from "./db";
-import { bookings, properties, icalSyncLogs, cleaningTasks } from "@shared/schema";
+import { logger } from "./logger";
+import {
+  bookings,
+  properties,
+  icalSyncLogs,
+  cleaningTasks,
+} from "@shared/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 
 interface ICalEvent {
@@ -21,7 +27,7 @@ interface ICalEvent {
 export function parseICalData(icalData: string): ICalEvent[] {
   const events: ICalEvent[] = [];
   const lines = icalData.split(/\r?\n/);
-  
+
   let currentEvent: Partial<ICalEvent> | null = null;
   let currentKey = "";
   let currentValue = "";
@@ -48,7 +54,7 @@ export function parseICalData(icalData: string): ICalEvent[] {
 
     const keyPart = line.substring(0, colonIndex);
     currentValue = line.substring(colonIndex + 1);
-    
+
     // Handle properties with parameters (e.g., DTSTART;VALUE=DATE:20240115)
     const semiIndex = keyPart.indexOf(";");
     currentKey = semiIndex > -1 ? keyPart.substring(0, semiIndex) : keyPart;
@@ -56,7 +62,12 @@ export function parseICalData(icalData: string): ICalEvent[] {
     if (currentKey === "BEGIN" && currentValue === "VEVENT") {
       currentEvent = {};
     } else if (currentKey === "END" && currentValue === "VEVENT") {
-      if (currentEvent && currentEvent.uid && currentEvent.dtstart && currentEvent.dtend) {
+      if (
+        currentEvent &&
+        currentEvent.uid &&
+        currentEvent.dtstart &&
+        currentEvent.dtend
+      ) {
         events.push(currentEvent as ICalEvent);
       }
       currentEvent = null;
@@ -66,7 +77,11 @@ export function parseICalData(icalData: string): ICalEvent[] {
   return events;
 }
 
-function processKeyValue(event: Partial<ICalEvent>, key: string, value: string) {
+function processKeyValue(
+  event: Partial<ICalEvent>,
+  key: string,
+  value: string
+) {
   switch (key) {
     case "UID":
       event.uid = value;
@@ -89,7 +104,7 @@ function processKeyValue(event: Partial<ICalEvent>, key: string, value: string) 
 function parseICalDate(value: string): Date {
   // Format: YYYYMMDD ou YYYYMMDDTHHmmssZ
   const cleaned = value.replace(/[^0-9TZ]/g, "");
-  
+
   if (cleaned.length === 8) {
     // Date only: YYYYMMDD
     const year = parseInt(cleaned.substring(0, 4));
@@ -104,13 +119,13 @@ function parseICalDate(value: string): Date {
     const hour = parseInt(cleaned.substring(9, 11));
     const minute = parseInt(cleaned.substring(11, 13));
     const second = parseInt(cleaned.substring(13, 15));
-    
+
     if (cleaned.endsWith("Z")) {
       return new Date(Date.UTC(year, month, day, hour, minute, second));
     }
     return new Date(year, month, day, hour, minute, second);
   }
-  
+
   return new Date(value);
 }
 
@@ -128,16 +143,19 @@ function decodeICalText(value: string): string {
 function extractGuestName(event: ICalEvent): string {
   // Airbnb format: "Reserved - Guest Name" ou simplement le nom
   const summary = event.summary || "";
-  
+
   if (summary.toLowerCase().includes("reserved")) {
     const match = summary.match(/reserved\s*[-–]\s*(.+)/i);
     if (match) return match[1].trim();
   }
-  
-  if (summary.toLowerCase().includes("blocked") || summary.toLowerCase().includes("not available")) {
+
+  if (
+    summary.toLowerCase().includes("blocked") ||
+    summary.toLowerCase().includes("not available")
+  ) {
     return "Blocked";
   }
-  
+
   return summary || "Guest";
 }
 
@@ -151,19 +169,38 @@ export async function syncICalForProperty(propertyId: string): Promise<{
   error?: string;
 }> {
   if (!db) {
-    return { success: false, imported: 0, updated: 0, error: "Database not initialized" };
+    return {
+      success: false,
+      imported: 0,
+      updated: 0,
+      error: "Database not initialized",
+    };
   }
 
   try {
     // Récupérer la propriété et son URL iCal
-    const [property] = await db.select().from(properties).where(eq(properties.id, propertyId)).limit(1);
-    
+    const [property] = await db
+      .select()
+      .from(properties)
+      .where(eq(properties.id, propertyId))
+      .limit(1);
+
     if (!property) {
-      return { success: false, imported: 0, updated: 0, error: "Property not found" };
+      return {
+        success: false,
+        imported: 0,
+        updated: 0,
+        error: "Property not found",
+      };
     }
-    
+
     if (!property.icalUrl) {
-      return { success: false, imported: 0, updated: 0, error: "No iCal URL configured for this property" };
+      return {
+        success: false,
+        imported: 0,
+        updated: 0,
+        error: "No iCal URL configured for this property",
+      };
     }
 
     // Fetch le calendrier iCal
@@ -172,14 +209,16 @@ export async function syncICalForProperty(propertyId: string): Promise<{
         "User-Agent": "AirbnbBot/1.0 iCal Sync",
       },
     });
-    
+
     if (!response.ok) {
-      throw new Error(`Failed to fetch iCal: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Failed to fetch iCal: ${response.status} ${response.statusText}`
+      );
     }
 
     const icalData = await response.text();
     const events = parseICalData(icalData);
-    
+
     let imported = 0;
     let updated = 0;
 
@@ -189,16 +228,21 @@ export async function syncICalForProperty(propertyId: string): Promise<{
       if (guestName === "Blocked") continue;
 
       // Check si la réservation existe déjà (par externalId)
-      const [existing] = await db.select().from(bookings)
-        .where(and(
-          eq(bookings.propertyId, propertyId),
-          eq(bookings.externalId, event.uid)
-        ))
+      const [existing] = await db
+        .select()
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.propertyId, propertyId),
+            eq(bookings.externalId, event.uid)
+          )
+        )
         .limit(1);
 
       if (existing) {
         // Update existing booking
-        await db.update(bookings)
+        await db
+          .update(bookings)
           .set({
             guestName,
             checkInDate: event.dtstart,
@@ -208,30 +252,38 @@ export async function syncICalForProperty(propertyId: string): Promise<{
           })
           .where(eq(bookings.id, existing.id));
         updated++;
-        
+
         // Update associated cleaning task if exists
         await updateCleaningTaskForBooking(existing.id, event.dtend);
       } else {
         // Create new booking
-        const [newBooking] = await db.insert(bookings).values({
-          propertyId,
-          guestName,
-          checkInDate: event.dtstart,
-          checkOutDate: event.dtend,
-          source: "ical",
-          externalId: event.uid,
-          notes: event.description || null,
-          status: "confirmed",
-        }).returning();
+        const [newBooking] = await db
+          .insert(bookings)
+          .values({
+            propertyId,
+            guestName,
+            checkInDate: event.dtstart,
+            checkOutDate: event.dtend,
+            source: "ical",
+            externalId: event.uid,
+            notes: event.description || null,
+            status: "confirmed",
+          })
+          .returning();
         imported++;
-        
+
         // Create cleaning task for this booking (scheduled for checkout day)
-        await createCleaningTaskForBooking(propertyId, newBooking.id, event.dtend);
+        await createCleaningTaskForBooking(
+          propertyId,
+          newBooking.id,
+          event.dtend
+        );
       }
     }
 
     // Update property last imported timestamp
-    await db.update(properties)
+    await db
+      .update(properties)
       .set({ lastImportedAt: new Date() })
       .where(eq(properties.id, propertyId));
 
@@ -245,17 +297,19 @@ export async function syncICalForProperty(propertyId: string): Promise<{
 
     return { success: true, imported, updated };
   } catch (error: any) {
-    console.error("iCal sync error:", error);
-    
+    logger.error("iCal sync error:", error);
+
     // Log the error
     if (db) {
       await db.insert(icalSyncLogs).values({
         propertyId,
         syncStatus: "failed",
         errorMessage: error.message,
+        bookingsImported: "0",
+        bookingsUpdated: "0",
       });
     }
-    
+
     return { success: false, imported: 0, updated: 0, error: error.message };
   }
 }
@@ -263,12 +317,20 @@ export async function syncICalForProperty(propertyId: string): Promise<{
 /**
  * Créer une tâche de ménage automatiquement pour une réservation
  */
-async function createCleaningTaskForBooking(propertyId: string, bookingId: string, checkoutDate: Date) {
+async function createCleaningTaskForBooking(
+  propertyId: string,
+  bookingId: string,
+  checkoutDate: Date
+) {
   if (!db) return;
 
   // Récupérer la propriété pour avoir le personnel de ménage assigné
-  const [property] = await db.select().from(properties).where(eq(properties.id, propertyId)).limit(1);
-  
+  const [property] = await db
+    .select()
+    .from(properties)
+    .where(eq(properties.id, propertyId))
+    .limit(1);
+
   await db.insert(cleaningTasks).values({
     propertyId,
     bookingId,
@@ -284,10 +346,14 @@ async function createCleaningTaskForBooking(propertyId: string, bookingId: strin
 /**
  * Mettre à jour la tâche de ménage si la date de checkout change
  */
-async function updateCleaningTaskForBooking(bookingId: string, newCheckoutDate: Date) {
+async function updateCleaningTaskForBooking(
+  bookingId: string,
+  newCheckoutDate: Date
+) {
   if (!db) return;
 
-  await db.update(cleaningTasks)
+  await db
+    .update(cleaningTasks)
     .set({
       scheduledDate: newCheckoutDate,
       updatedAt: new Date(),
@@ -305,12 +371,16 @@ export async function getBookingsForDateRange(
 ) {
   if (!db) return [];
 
-  return await db.select().from(bookings)
-    .where(and(
-      eq(bookings.propertyId, propertyId),
-      gte(bookings.checkInDate, startDate),
-      lte(bookings.checkOutDate, endDate)
-    ))
+  return await db
+    .select()
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.propertyId, propertyId),
+        gte(bookings.checkInDate, startDate),
+        lte(bookings.checkOutDate, endDate)
+      )
+    )
     .orderBy(bookings.checkInDate);
 }
 
@@ -321,22 +391,37 @@ export async function getPropertyCalendar(propertyId: string, month: Date) {
   if (!db) return { bookings: [], cleaningTasks: [] };
 
   const startOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
-  const endOfMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0, 23, 59, 59);
+  const endOfMonth = new Date(
+    month.getFullYear(),
+    month.getMonth() + 1,
+    0,
+    23,
+    59,
+    59
+  );
 
-  const monthBookings = await db.select().from(bookings)
-    .where(and(
-      eq(bookings.propertyId, propertyId),
-      gte(bookings.checkOutDate, startOfMonth),
-      lte(bookings.checkInDate, endOfMonth)
-    ))
+  const monthBookings = await db
+    .select()
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.propertyId, propertyId),
+        gte(bookings.checkOutDate, startOfMonth),
+        lte(bookings.checkInDate, endOfMonth)
+      )
+    )
     .orderBy(bookings.checkInDate);
 
-  const monthCleaningTasks = await db.select().from(cleaningTasks)
-    .where(and(
-      eq(cleaningTasks.propertyId, propertyId),
-      gte(cleaningTasks.scheduledDate, startOfMonth),
-      lte(cleaningTasks.scheduledDate, endOfMonth)
-    ))
+  const monthCleaningTasks = await db
+    .select()
+    .from(cleaningTasks)
+    .where(
+      and(
+        eq(cleaningTasks.propertyId, propertyId),
+        gte(cleaningTasks.scheduledDate, startOfMonth),
+        lte(cleaningTasks.scheduledDate, endOfMonth)
+      )
+    )
     .orderBy(cleaningTasks.scheduledDate);
 
   return {
@@ -360,18 +445,24 @@ export async function syncAllICalCalendars(): Promise<{
   failed: number;
 }> {
   if (!db) {
-    console.log("[iCal Auto-Sync] Database not initialized, skipping...");
+    logger.info("[iCal Auto-Sync] Database not initialized, skipping...");
     return { total: 0, success: 0, failed: 0 };
   }
 
-  console.log("[iCal Auto-Sync] Starting automatic synchronization...");
-  
+  logger.info("[iCal Auto-Sync] Starting automatic synchronization...");
+
   try {
     // Récupérer toutes les propriétés avec une URL iCal configurée
-    const propertiesWithIcal = await db.select().from(properties)
-      .where(sql`${properties.icalUrl} IS NOT NULL AND ${properties.icalUrl} != ''`);
+    const propertiesWithIcal = await db
+      .select()
+      .from(properties)
+      .where(
+        sql`${properties.icalUrl} IS NOT NULL AND ${properties.icalUrl} != ''`
+      );
 
-    console.log(`[iCal Auto-Sync] Found ${propertiesWithIcal.length} properties with iCal configured`);
+    logger.info(
+      `[iCal Auto-Sync] Found ${propertiesWithIcal.length} properties with iCal configured`
+    );
 
     let success = 0;
     let failed = 0;
@@ -381,29 +472,33 @@ export async function syncAllICalCalendars(): Promise<{
         const result = await syncICalForProperty(property.id);
         if (result.success) {
           success++;
-          console.log(`[iCal Auto-Sync] ✓ ${property.name}: ${result.imported} imported, ${result.updated} updated`);
+          logger.info(
+            `[iCal Auto-Sync] ✓ ${property.name}: ${result.imported} imported, ${result.updated} updated`
+          );
         } else {
           failed++;
-          console.error(`[iCal Auto-Sync] ✗ ${property.name}: ${result.error}`);
+          logger.error(`[iCal Auto-Sync] ✗ ${property.name}: ${result.error}`);
         }
       } catch (error: any) {
         failed++;
-        console.error(`[iCal Auto-Sync] ✗ ${property.name}: ${error.message}`);
+        logger.error(`[iCal Auto-Sync] ✗ ${property.name}: ${error.message}`);
       }
-      
+
       // Petit délai entre chaque sync pour ne pas surcharger
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    console.log(`[iCal Auto-Sync] Completed: ${success}/${propertiesWithIcal.length} successful`);
-    
+    logger.info(
+      `[iCal Auto-Sync] Completed: ${success}/${propertiesWithIcal.length} successful`
+    );
+
     return {
       total: propertiesWithIcal.length,
       success,
       failed,
     };
   } catch (error: any) {
-    console.error("[iCal Auto-Sync] Error during sync:", error.message);
+    logger.error("[iCal Auto-Sync] Error during sync:", error.message);
     return { total: 0, success: 0, failed: 0 };
   }
 }
@@ -414,19 +509,21 @@ export async function syncAllICalCalendars(): Promise<{
  */
 export function startAutoSync(intervalMinutes: number = 30) {
   if (syncIntervalId) {
-    console.log("[iCal Auto-Sync] Auto-sync already running");
+    logger.info("[iCal Auto-Sync] Auto-sync already running");
     return;
   }
 
   const intervalMs = intervalMinutes * 60 * 1000;
-  
-  console.log(`[iCal Auto-Sync] Starting auto-sync every ${intervalMinutes} minutes`);
-  
+
+  logger.info(
+    `[iCal Auto-Sync] Starting auto-sync every ${intervalMinutes} minutes`
+  );
+
   // Sync immédiatement au démarrage (avec un délai de 10 secondes pour laisser le serveur démarrer)
   setTimeout(() => {
     syncAllICalCalendars();
   }, 10000);
-  
+
   // Puis sync périodiquement
   syncIntervalId = setInterval(() => {
     syncAllICalCalendars();
@@ -440,10 +537,9 @@ export function stopAutoSync() {
   if (syncIntervalId) {
     clearInterval(syncIntervalId);
     syncIntervalId = null;
-    console.log("[iCal Auto-Sync] Auto-sync stopped");
+    logger.info("[iCal Auto-Sync] Auto-sync stopped");
   }
 }
 
 // Importer sql pour la requête IS NOT NULL
 import { sql } from "drizzle-orm";
-

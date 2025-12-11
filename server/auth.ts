@@ -1,11 +1,10 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
-import { promisify } from "util";
-import bcrypt from "bcrypt";
 import { storage } from "./storage";
 import { User, registerSchema, loginSchema } from "@shared/schema";
+import { comparePasswords, hashPassword } from "./auth/password-utils";
+import { logger } from "./logger";
 
 declare global {
   namespace Express {
@@ -13,58 +12,33 @@ declare global {
   }
 }
 
-const scryptAsync = promisify(scrypt);
-
-export async function hashPassword(password: string) {
-  // Use bcrypt for new passwords (more standard)
-  return bcrypt.hash(password, 10);
-}
-
-async function comparePasswords(supplied: string, stored: string) {
-  // Check if it's a bcrypt hash (starts with $2)
-  if (stored.startsWith("$2")) {
-    return bcrypt.compare(supplied, stored);
-  }
-  
-  // Legacy scrypt format (hash.salt)
-  try {
-    const [hashed, salt] = stored.split(".");
-    if (!hashed || !salt) return false;
-    const hashedBuf = Buffer.from(hashed, "hex");
-    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-    if (hashedBuf.length !== suppliedBuf.length) return false;
-    return timingSafeEqual(hashedBuf, suppliedBuf);
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Configuration des routes d'authentification
- * 
+ *
  * ⚠️  NOTE : La configuration Passport elle-même est maintenant dans
  * server/auth/passportConfig.ts et est initialisée dans server/index.ts
  * AVANT l'appel à setupAuth().
- * 
+ *
  * Ce fichier contient uniquement les routes d'authentification.
  */
-export function setupAuth(app: Express) {
+export function setupAuth(app: Express, authLimiter?: any) {
   // La configuration Passport est maintenant gérée par initializePassport()
   // dans server/index.ts, donc on ne configure plus Passport ici
 
-  app.post("/api/register", async (req, res, next) => {
+  app.post("/api/register", authLimiter || [], async (req, res, next) => {
     try {
       const data = registerSchema.parse(req.body);
       // Accepter le rôle depuis le body (host ou cleaning_agent)
-      const role = req.body.role === "cleaning_agent" ? "cleaning_agent" : "host";
-      
+      const role =
+        req.body.role === "cleaning_agent" ? "cleaning_agent" : "host";
+
       // Vérification stricte de l'unicité de l'email
       const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
-        return res.status(409).json({ 
+        return res.status(409).json({
           message: "Un compte existe déjà avec cet email",
           error: "EMAIL_ALREADY_EXISTS",
-          code: "DUPLICATE_EMAIL"
+          code: "DUPLICATE_EMAIL",
         });
       }
 
@@ -75,6 +49,14 @@ export function setupAuth(app: Express) {
         role, // Inclure le rôle
       });
 
+      // Demarrer le trial automatiquement pour les nouveaux utilisateurs
+      const trialDuration = 7 * 24 * 60 * 60 * 1000; // 7 jours
+      const trialStart = new Date();
+      const trialEnd = new Date(trialStart.getTime() + trialDuration);
+      await storage.startTrial(user.id, trialStart, trialEnd);
+      user.trialStartedAt = trialStart;
+      user.trialEndsAt = trialEnd;
+
       req.login(user, (err) => {
         if (err) return next(err);
         const { password: _, ...userWithoutPassword } = user;
@@ -82,41 +64,55 @@ export function setupAuth(app: Express) {
       });
     } catch (error: any) {
       // Gérer spécifiquement les erreurs d'email dupliqué
-      if (error.message?.includes("existe déjà") || error.message?.includes("already exists")) {
-        return res.status(409).json({ 
+      if (
+        error.message?.includes("existe déjà") ||
+        error.message?.includes("already exists")
+      ) {
+        return res.status(409).json({
           message: "Un compte existe déjà avec cet email",
           error: "EMAIL_ALREADY_EXISTS",
-          code: "DUPLICATE_EMAIL"
+          code: "DUPLICATE_EMAIL",
         });
       }
-      res.status(400).json({ message: error.message || "Erreur lors de l'inscription" });
+      res
+        .status(400)
+        .json({ message: error.message || "Erreur lors de l'inscription" });
     }
   });
 
-  app.post("/api/login", (req, res, next) => {
+  app.post("/api/login", authLimiter || [], (req, res, next) => {
     try {
       loginSchema.parse(req.body);
       passport.authenticate("local", (err: any, user: any) => {
         if (err) {
-          console.error("[AUTH] Login error:", err.message);
+          logger.error("[AUTH] Login error:", err.message);
           return next(err);
         }
         if (!user) {
-          console.warn(`[AUTH] Login failed for email: ${req.body.email}`);
-          return res.status(401).json({ message: "Email ou mot de passe incorrect" });
+          logger.warn(`[AUTH] Login failed for email: ${req.body.email}`);
+          return res
+            .status(401)
+            .json({ message: "Email ou mot de passe incorrect" });
         }
         req.login(user, (err) => {
           if (err) {
-            console.error(`[AUTH] Session creation failed for user ${user.id}:`, err.message);
+            logger.error(
+              `[AUTH] Session creation failed for user ${user.id}:`,
+              err.message
+            );
             return next(err);
           }
-          console.log(`[AUTH] Session created for user: ${user.id} (${user.email})`);
+          logger.info(
+            `[AUTH] Session created for user: ${user.id} (${user.email})`
+          );
           res.json(user);
         });
       })(req, res, next);
     } catch (error: any) {
-      console.error("[AUTH] Login validation error:", error.message);
-      res.status(400).json({ message: error.message || "Erreur lors de la connexion" });
+      logger.error("[AUTH] Login validation error:", error.message);
+      res
+        .status(400)
+        .json({ message: error.message || "Erreur lors de la connexion" });
     }
   });
 
@@ -124,18 +120,18 @@ export function setupAuth(app: Express) {
     const userId = req.user?.id;
     req.logout((err: any) => {
       if (err) {
-        console.error("[AUTH] Logout error:", err.message);
+        logger.error("[AUTH] Logout error:", err.message);
         return next(err);
       }
       if (userId) {
-        console.log(`[AUTH] User logged out: ${userId}`);
+        logger.info(`[AUTH] User logged out: ${userId}`);
       }
       // Détruire la session explicitement
       req.session.destroy((err: any) => {
         if (err) {
-          console.error("[AUTH] Session destruction error:", err.message);
+          logger.error("[AUTH] Session destruction error:", err.message);
         }
-        res.clearCookie('airbnb.session');
+        res.clearCookie("airbnb.session");
         res.sendStatus(200);
       });
     });
@@ -146,42 +142,39 @@ export function setupAuth(app: Express) {
     const sessionId = req.sessionID;
     const isAuth = req.isAuthenticated();
     const userId = req.user?.id;
-    
+
     if (!isAuth) {
-      console.warn(`[AUTH] /api/user - Not authenticated. Session: ${sessionId?.substring(0, 10)}..., User: ${userId || 'none'}`);
-      return res.status(401).json({ 
+      logger.warn(
+        `[AUTH] /api/user - Not authenticated. Session: ${sessionId?.substring(
+          0,
+          10
+        )}..., User: ${userId || "none"}`
+      );
+      return res.status(401).json({
         message: "Non authentifié",
         sessionId: sessionId || null,
-        hasSession: !!req.session
+        hasSession: !!req.session,
       });
     }
-    
+
     try {
       const user = await storage.getUser(userId);
       if (!user) {
         // Utilisateur n'existe plus - nettoyer la session
-        console.warn(`[AUTH] User ${userId} not found, destroying session`);
+        logger.warn(`[AUTH] User ${userId} not found, destroying session`);
         req.logout(() => {
           req.session.destroy(() => {});
         });
         return res.status(404).json({ message: "Utilisateur non trouvé" });
       }
 
-      // Start trial if new user
-      if (!user.trialStartedAt) {
-        const trialDuration = 7 * 24 * 60 * 60 * 1000;
-        const trialStart = new Date();
-        const trialEnd = new Date(trialStart.getTime() + trialDuration);
-        await storage.startTrial(userId, trialStart, trialEnd);
-        user.trialStartedAt = trialStart;
-        user.trialEndsAt = trialEnd;
-      }
-
       const { password: _, ...userWithoutPassword } = user;
-      console.log(`[AUTH] /api/user - Returning user: ${user.email} (${userId})`);
+      logger.info(
+        `[AUTH] /api/user - Returning user: ${user.email} (${userId})`
+      );
       res.json(userWithoutPassword);
     } catch (error: any) {
-      console.error(`[AUTH] Error fetching user ${userId}:`, error.message);
+      logger.error(`[AUTH] Error fetching user ${userId}:`, error.message);
       res.status(500).json({ message: "Erreur serveur" });
     }
   });
@@ -192,29 +185,37 @@ export const isAuthenticated = (req: any, res: any, next: any) => {
   const isAuth = req.isAuthenticated();
   const userId = req.user?.id;
   const sessionId = req.sessionID;
-  
+
   if (!isAuth) {
-    console.warn(`[AUTH] Unauthenticated request to ${req.method} ${req.path}`);
-    console.warn(`[AUTH] Session ID: ${sessionId}, User ID: ${userId || 'none'}`);
-    console.warn(`[AUTH] Session exists: ${!!req.session}, User in session: ${!!req.user}`);
-    
+    logger.warn(`[AUTH] Unauthenticated request to ${req.method} ${req.path}`);
+    logger.warn(
+      `[AUTH] Session ID: ${sessionId}, User ID: ${userId || "none"}`
+    );
+    logger.warn(
+      `[AUTH] Session exists: ${!!req.session}, User in session: ${!!req.user}`
+    );
+
     // Vérifier si c'est un problème de session expirée
     if (req.session && !req.user) {
-      console.warn(`[AUTH] Session exists but user not deserialized - possible session corruption`);
+      logger.warn(
+        `[AUTH] Session exists but user not deserialized - possible session corruption`
+      );
     }
-    
-    return res.status(401).json({ 
+
+    return res.status(401).json({
       message: "Non authentifié",
       error: "UNAUTHORIZED",
       path: req.path,
-      sessionId: sessionId || null
+      sessionId: sessionId || null,
     });
   }
-  
+
   // Log pour les requêtes authentifiées (optionnel, peut être désactivé en production)
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`[AUTH] Authenticated request: ${req.method} ${req.path} by user ${userId}`);
+  if (process.env.NODE_ENV === "development") {
+    logger.info(
+      `[AUTH] Authenticated request: ${req.method} ${req.path} by user ${userId}`
+    );
   }
-  
+
   next();
 };

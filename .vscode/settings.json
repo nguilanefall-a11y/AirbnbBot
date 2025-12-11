@@ -2,6 +2,47 @@
   "npm.runSilent": false,
   "terminal.integrated.defaultProfile.osx": "zsh",
   "cursor.chat.autoApprove": true,
-  "cursor.general.autoApprove": true
+  "cursor.general.autoApprove": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "gitlens.mode.active": "zen",
+  "gitlens.currentLine.enabled": true,
+  "gitlens.gitExplorer.enabled": false,
+  "gitlens.defaultFileHistoryView": "commits",
+  "errorLens.enabled": true,
+  "errorLens.fontWeight": "600",
+  "errorLens.fontStyleItalic": false,
+  "errorLens.onSave": true,
+  "errorLens.followCursor": "closestProblem",
+  "errorLens.messageBackgroundMode": "none",
+  "errorLens.statusBarMessageEnabled": false,
+  "errorLens.addAnnotationTextPrefixes": true,
+  "path-intellisense.autoSlashAfterDirectory": true,
+  "path-intellisense.extensionOnImport": true,
+  "path-intellisense.showHiddenFiles": false,
+  "path-intellisense.absolutePathToWorkspace": false,
+  "path-intellisense.exclude": [
+    "**/node_modules",
+    "**/.git",
+    "**/dist",
+    "**/build",
+    "**/.next",
+    "**/.cache"
+  ],
+  "files.autoSave": "afterDelay",
+  "workbench.editor.enablePreview": false,
+  "editor.inlineSuggest.enabled": true,
+  "editor.stablePeek": true
 }
-

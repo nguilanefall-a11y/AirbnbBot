@@ -14,16 +14,20 @@ export async function cleanupExpiredSessions(): Promise<number> {
   try {
     const client = await pool.connect();
     try {
-      // Supprimer les sessions expirées
+      // Supprimer les sessions expirées avec buffer de 5 minutes
+      const FIVE_MINUTES = 5 * 60 * 1000;
+      const threshold = new Date(Date.now() - FIVE_MINUTES);
+
       const result = await client.query(
-        `DELETE FROM sessions WHERE expire < NOW() RETURNING sid`
+        `DELETE FROM sessions WHERE expire < $1 RETURNING sid`,
+        [threshold]
       );
       const count = result.rowCount || 0;
-      
+
       if (count > 0) {
         console.log(`[SESSION] Cleaned up ${count} expired session(s)`);
       }
-      
+
       return count;
     } finally {
       client.release();
@@ -53,6 +57,7 @@ export function startSessionCleanup(intervalMinutes: number = 60) {
     cleanupExpiredSessions();
   }, intervalMs);
 
-  console.log(`[SESSION] Auto-cleanup enabled (every ${intervalMinutes} minutes)`);
+  console.log(
+    `[SESSION] Auto-cleanup enabled (every ${intervalMinutes} minutes)`
+  );
 }
-

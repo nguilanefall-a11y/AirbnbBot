@@ -2,9 +2,9 @@
  * ============================================
  * SERVER INDEX - ARCHITECTURE STABILISÉE
  * ============================================
- * 
+ *
  * ⚠️  RÈGLE ABSOLUE : NE JAMAIS MODIFIER L'ORDRE DES MIDDLEWARES
- * 
+ *
  * Ordre FIXE et IMMUABLE :
  * 1. Imports système
  * 2. Configuration session
@@ -15,13 +15,17 @@
  * 7. Middleware logging
  * 8. Routes
  * 9. Middleware d'erreurs
- * 
+ *
  * Toute modification doit être EXPLICITE et documentée.
  */
 
 import { config } from "dotenv";
 import { resolve } from "path";
 config({ path: resolve(import.meta.dirname, "..", ".env") });
+
+// Validation des variables d'environnement (DOIT ÊTRE AVANT TOUT)
+import { validateEnvironment } from "./config-validator";
+validateEnvironment();
 
 // ============================================
 // 1. IMPORTS SYSTÈME (NE PAS RÉORGANISER)
@@ -31,6 +35,8 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
 import crypto from "crypto";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startAutoSync } from "./ical-service";
@@ -42,16 +48,48 @@ import { debugAuth } from "./middlewares/debugAuth";
 
 const app = express();
 
-declare module 'http' {
+// ============================================
+// RATE LIMITING CONFIGURATION
+// ============================================
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 tentatives max
+  message: "Trop de tentatives, réessayez dans 15 minutes.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requêtes max
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ============================================
+// CORS CONFIGURATION
+// ============================================
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+declare module "http" {
   interface IncomingMessage {
-    rawBody: unknown
+    rawBody: unknown;
   }
 }
-app.use(express.json({
-  verify: (req, _res, buf) => {
-    req.rawBody = buf;
-  }
-}));
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: false }));
 
 // Configuration SESSION_SECRET sécurisé
@@ -59,69 +97,85 @@ let sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret) {
   if (process.env.NODE_ENV === "production") {
     console.error("❌ CRITICAL: SESSION_SECRET must be set in production!");
-    console.error("   Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+    console.error(
+      "   Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+    );
     process.exit(1);
   } else {
     // Générer un secret aléatoire en développement (avec warning)
-    sessionSecret = crypto.randomBytes(32).toString('hex');
-    console.warn("⚠️  SESSION_SECRET not set, using generated secret (change in production!)");
+    sessionSecret = crypto.randomBytes(32).toString("hex");
+    console.warn(
+      "⚠️  SESSION_SECRET not set, using generated secret (change in production!)"
+    );
   }
 }
 
-// Configuration du store de sessions PostgreSQL
+// Configuration du store de sessions PostgreSQL avec retry
 const PgSession = connectPgSimple(session);
-let sessionStore: any = null;
 
-if (pool) {
-  try {
-    sessionStore = new PgSession({
-      pool: pool,
-      tableName: 'sessions', // Nom de la table dans le schéma
-      createTableIfMissing: true, // Créer la table si elle n'existe pas
-    });
-    console.log("✅ PostgreSQL session store initialized");
-  } catch (error: any) {
-    console.error("⚠️  Failed to initialize PostgreSQL session store:", error.message);
-    console.warn("   Falling back to memory store (sessions will be lost on restart)");
+async function initializeSessionStore(retries = 3): Promise<any> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const store = new PgSession({
+        pool: pool,
+        tableName: "sessions",
+        createTableIfMissing: true,
+      });
+      console.log("✅ PostgreSQL session store initialized");
+      return store;
+    } catch (error: any) {
+      console.warn(
+        `⚠️  Session store init failed (attempt ${i + 1}/${retries}):`,
+        error.message
+      );
+      if (i < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
   }
+  console.error("❌ Failed to initialize session store after retries");
+  console.warn(
+    "   Falling back to memory store (sessions will be lost on restart)"
+  );
+  return null;
+}
+
+let sessionStore: any = null;
+if (pool) {
+  // Initialiser avec retry (sera exécuté de manière asynchrone)
+  initializeSessionStore().then((store) => {
+    if (store) sessionStore = store;
+  });
 }
 
 // Session middleware avec store PostgreSQL
-// Configuration des cookies adaptée pour Render
 const isProduction = process.env.NODE_ENV === "production";
-const baseUrl = process.env.BASE_URL || '';
-// Sur Render, les URLs sont toujours HTTPS, donc on force secure: true en production
-// Mais on permet secure: false si explicitement demandé via env var
-const forceSecure = process.env.COOKIE_SECURE !== 'false';
-const isHttps = baseUrl.startsWith('https://') || (isProduction && forceSecure);
 
-app.use(session({
-  store: sessionStore || undefined, // Utilise PostgreSQL si disponible, sinon mémoire
-  secret: sessionSecret!,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    // En production sur Render, on utilise HTTPS donc secure: true
-    // Mais on permet secure: false si explicitement demandé
-    secure: isHttps,
-    httpOnly: true,
-    sameSite: 'lax', // Protection CSRF, compatible avec les redirections
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    // Domain optionnel (décommenter si nécessaire)
-    // domain: process.env.COOKIE_DOMAIN,
-  },
-  name: 'airbnb.session', // Nom du cookie (évite les conflits)
-}));
+app.use(
+  session({
+    store: sessionStore || undefined, // Utilise PostgreSQL si disponible, sinon mémoire
+    secret: sessionSecret!,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // Simple et clair : HTTPS obligatoire en prod
+      httpOnly: true,
+      sameSite: "lax", // Protection CSRF, compatible avec les redirections
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours (au lieu de 30)
+    },
+    name: "airbnb.session", // Nom du cookie (évite les conflits)
+  })
+);
 
 // ============================================
 // 2. CONFIGURATION SESSION (ORDRE FIXE)
 // ============================================
 // Log de la configuration des cookies
 console.log(`[SESSION] Cookie configuration:`);
-console.log(`  - secure: ${isHttps}`);
-console.log(`  - baseUrl: ${baseUrl || 'not set'}`);
+console.log(`  - secure: ${isProduction}`);
 console.log(`  - isProduction: ${isProduction}`);
-console.log(`  - store: ${sessionStore ? 'PostgreSQL' : 'Memory'}`);
+console.log(`  - maxAge: 7 days`);
+console.log(`  - store: ${sessionStore ? "PostgreSQL" : "Memory"}`);
 
 // ============================================
 // 3. PASSPORT INITIALIZATION (ORDRE FIXE)
@@ -180,7 +234,7 @@ app.use((req, res, next) => {
 // 7. ROUTES (ORDRE FIXE)
 // ============================================
 (async () => {
-  const server = await registerRoutes(app);
+  const server = await registerRoutes(app, authLimiter);
 
   // ============================================
   // 8. MIDDLEWARE D'ERREURS (ORDRE FIXE - TOUJOURS EN DERNIER)
@@ -207,19 +261,25 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
+  const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
-    
+
     // Démarrer la synchronisation automatique des calendriers iCal
     // Sync toutes les 30 minutes par défaut
-    const syncInterval = parseInt(process.env.ICAL_SYNC_INTERVAL_MINUTES || '30', 10);
+    const syncInterval = parseInt(
+      process.env.ICAL_SYNC_INTERVAL_MINUTES || "30",
+      10
+    );
     startAutoSync(syncInterval);
     log(`iCal auto-sync enabled (every ${syncInterval} minutes)`);
-    
+
     // Démarrer le nettoyage automatique des sessions expirées
     // Nettoyage toutes les heures par défaut
-    const cleanupInterval = parseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES || '60', 10);
+    const cleanupInterval = parseInt(
+      process.env.SESSION_CLEANUP_INTERVAL_MINUTES || "60",
+      10
+    );
     startSessionCleanup(cleanupInterval);
   });
 })();

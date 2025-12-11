@@ -2,12 +2,12 @@
  * ============================================
  * CONFIGURATION PASSPORT - FICHIER DÉDIÉ
  * ============================================
- * 
+ *
  * ⚠️  RÈGLE ABSOLUE : Ce fichier contient UNIQUEMENT :
  * - La stratégie Passport (LocalStrategy)
  * - La sérialisation utilisateur
  * - La désérialisation utilisateur
- * 
+ *
  * ❌ NE PAS ajouter d'autres middlewares ici
  * ❌ NE PAS ajouter de routes ici
  * ❌ NE PAS modifier l'ordre des fonctions
@@ -15,34 +15,8 @@
 
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { scrypt, timingSafeEqual } from "crypto";
-import { promisify } from "util";
-import bcrypt from "bcrypt";
 import { storage } from "../storage";
-
-const scryptAsync = promisify(scrypt);
-
-/**
- * Comparaison de mots de passe (support bcrypt + legacy scrypt)
- */
-async function comparePasswords(supplied: string, stored: string): Promise<boolean> {
-  // Check if it's a bcrypt hash (starts with $2)
-  if (stored.startsWith("$2")) {
-    return bcrypt.compare(supplied, stored);
-  }
-  
-  // Legacy scrypt format (hash.salt)
-  try {
-    const [hashed, salt] = stored.split(".");
-    if (!hashed || !salt) return false;
-    const hashedBuf = Buffer.from(hashed, "hex");
-    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-    if (hashedBuf.length !== suppliedBuf.length) return false;
-    return timingSafeEqual(hashedBuf, suppliedBuf);
-  } catch {
-    return false;
-  }
-}
+import { comparePasswords } from "./password-utils";
 
 /**
  * Configuration de la stratégie Passport Local
@@ -92,13 +66,20 @@ export function configurePassportDeserialization(): void {
         done(null, userWithoutPassword);
       } else {
         // Utilisateur n'existe plus - nettoyer la session
-        console.warn(`[PASSPORT] User not found during deserialization: ${id} - session will be invalidated`);
+        console.warn(
+          `[PASSPORT] User not found during deserialization: ${id} - session will be invalidated`
+        );
         done(null, false);
       }
     } catch (error: any) {
-      console.error(`[PASSPORT] Error deserializing user ${id}:`, error.message);
-      // En cas d'erreur, invalider la session pour éviter les boucles
-      done(null, false);
+      console.error(
+        `[PASSPORT] Database error deserializing user ${id}:`,
+        error.message
+      );
+      console.error(`[PASSPORT] Stack trace:`, error.stack);
+      // Erreur BDD temporaire : renvoyer l'erreur au lieu de false
+      // Cela permet a Passport de retry au lieu de detruire la session
+      done(error);
     }
   });
 }
@@ -113,4 +94,3 @@ export function initializePassport(): void {
   configurePassportDeserialization();
   console.log("✅ Passport configuration initialized");
 }
-
