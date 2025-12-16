@@ -1,0 +1,9 @@
+# Extensions VS Code pour AirbnbBot
+# Copier ce fichier sur le Mac serveur et exécuter :
+# cat extensions-airbnbbot.txt | xargs -L 1 code --install-extension
+
+ms-playwright.playwright
+dbaeumer.vscode-eslint
+esbenp.prettier-vscode
+ms-python.python
+cweijan.vscode-postgresql-client2
