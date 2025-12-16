@@ -32,3 +32,4 @@ echo "  - Manuel: python src/main.py <api|sync|send>"
 echo ""
 
 
+

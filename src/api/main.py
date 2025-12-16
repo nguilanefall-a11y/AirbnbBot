@@ -1,7 +1,7 @@
 """
 API FastAPI principale
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from src.api.routes import health, messages, listings, ai_webhook, messages_auto
@@ -40,6 +40,21 @@ try:
     logger.info("✅ Route /api/messages/auto-respond enregistrée")
 except Exception as e:
     logger.error(f"❌ Erreur enregistrement route auto-respond: {e}")
+
+# Root route to avoid 404 on '/'
+@app.get("/")
+def root():
+    return {
+        "service": "Airbnb Co-Host Bot API",
+        "status": "ok",
+        "auto_respond": True,
+        "message": "Utilisez /health ou /api/messages/auto-respond (POST)."
+    }
+
+# Favicon route to silence 404 errors
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
 
 
 @app.on_event("startup")

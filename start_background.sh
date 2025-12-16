@@ -59,3 +59,4 @@ echo "   pkill -f 'src.main'"
 echo ""
 echo "✅ Le système continuera de fonctionner même après fermeture de Cursor !"
 
+

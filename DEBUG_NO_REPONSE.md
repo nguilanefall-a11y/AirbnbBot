@@ -91,3 +91,4 @@ Si tu ne vois pas ces logs, les workers ne tournent pas ou ne détectent pas les
 - [ ] Nouveaux messages détectés (check_new_messages.py)
 - [ ] Jobs dans queue_outbox (SELECT COUNT(*) FROM queue_outbox WHERE status='pending')
 
+

@@ -4,6 +4,7 @@ Version optimisée avec fallback DOM et gestion des timeouts
 """
 import json
 import logging
+import time
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from playwright.sync_api import Page
@@ -15,8 +16,13 @@ from src.playwright.utils import (
 from src.playwright.captcha_detector import handle_captcha, check_for_login_redirect
 from src.playwright.human_interactions import HumanInteraction
 from src.config import settings
+import os
 
 logger = logging.getLogger(__name__)
+
+# Créer dossier debug
+DEBUG_DIR = "./debug_screenshots"
+os.makedirs(DEBUG_DIR, exist_ok=True)
 
 
 def fetch_messages_from_dom(page: Page, thread_id: str) -> List[Dict[str, Any]]:
@@ -451,6 +457,32 @@ def fetch_threads_and_messages() -> List[Dict[str, Any]]:
     
     with BrowserManager() as manager:
         page = manager.new_page()
+        
+        # ✅ VÉRIFICATION COOKIES: Tester la session avant de scraper
+        try:
+            logger.info("🔐 Vérification de la validité de la session...")
+            page.goto("https://www.airbnb.com/hosting/inbox", 
+                     wait_until="domcontentloaded", timeout=30000)
+            time.sleep(3)
+            
+            current_url = page.url
+            if "/login" in current_url or "/authenticate" in current_url:
+                logger.error("🚨 COOKIES EXPIRÉS - SESSION INVALIDE")
+                logger.error("🚨 Action requise: Refaire l'auth avec reconnect_airbnb.py")
+                # Pause visuelle pour debug
+                from src.config import settings
+                if not settings.AIRBNB_HEADLESS:
+                    logger.info("⏸️  Pause de 10s pour inspection visuelle...")
+                    time.sleep(10)
+                return []
+            
+            logger.info("✅ Session valide, début du scraping...")
+        except Exception as check_error:
+            logger.error(f"❌ Erreur vérification session: {check_error}")
+            from src.config import settings
+            if not settings.AIRBNB_HEADLESS:
+                time.sleep(10)
+            return []
         
         try:
             # Mettre en place l'interception des réponses AVANT la navigation

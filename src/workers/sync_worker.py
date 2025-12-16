@@ -255,8 +255,23 @@ def run_sync_worker():
     max_consecutive_errors = 5
     last_successful_sync = None
     
+    # Boucle de résilience infinie: ne meurt jamais, redémarre après crash
     while True:
         try:
+            # OPTIMISATION: Vérifier la session/cookies avant de scraper
+            from src.playwright.browser_manager import BrowserManager
+            bm = BrowserManager()
+            context = bm.start()
+            page = context.new_page()
+            page.goto("https://airbnb.com")
+            time.sleep(2)
+            final_url = page.url
+            if "airbnb.com/login" in final_url:
+                print("\033[91m🚨 COOKIES EXPIRÉS - REFAIRE L'AUTH\033[0m")
+                time.sleep(10)
+                bm.close()
+                return
+            bm.close()
             # Mettre à jour le heartbeat
             db = get_db_session()
             try:
@@ -310,10 +325,13 @@ def run_sync_worker():
             
             # Arrêter le worker proprement
             logger.info("🛑 Arrêt du worker")
-            break
+            # Au lieu d'arrêter définitivement, attendre et reprendre pour rester immortel
+            time.sleep(60)
+            continue
             
         except KeyboardInterrupt:
             logger.info("🛑 Arrêt du worker demandé (Ctrl+C)")
+            # Respecter l'arrêt manuel
             break
             
         except Exception as e:
@@ -346,6 +364,17 @@ def run_sync_worker():
             backoff_delay = min(settings.RETRY_DELAY_SEC * consecutive_errors, 600)  # Max 10 minutes
             logger.info(f"⏳ Attente {backoff_delay}s avant de réessayer...")
             time.sleep(backoff_delay)
+
+        finally:
+            # Gestionnaire de ressources: s'assurer de la fermeture du navigateur entre itérations
+            try:
+                from src.playwright.browser_manager import BrowserManager
+                bm = BrowserManager()
+                # Si jamais une instance subsiste, s'assurer de fermer proprement
+                bm.close()
+            except Exception:
+                # Pas bloquant
+                pass
 
 
 if __name__ == "__main__":

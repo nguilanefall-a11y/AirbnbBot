@@ -105,3 +105,4 @@ Avec `nohup` ou `PM2`, le système :
 - Ils continuent de tourner tant que la machine est allumée
 - Pour qu'ils démarrent automatiquement au boot, il faut les configurer comme service système (systemd sur Linux, launchd sur macOS)
 
+

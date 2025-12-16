@@ -18,7 +18,7 @@ from src.db.repository import (
     get_thread_by_airbnb_id
 )
 from src.services.message_queue import MessageQueue, lock_job
-from src.services.notifier import notify_admin, notify_worker_error
+from src.services.notifier import notify_admin, notify_worker_error, notify_captcha_detected
 from src.db.db import get_db_session
 
 logging.basicConfig(
@@ -129,6 +129,7 @@ def run_send_worker():
     messages_sent_count = 0
     messages_failed_count = 0
     
+    # Boucle de résilience infinie: toujours vivante, redémarre après crash
     while True:
         try:
             # Mettre à jour le heartbeat
@@ -141,6 +142,33 @@ def run_send_worker():
                 })
             finally:
                 db.close()
+            
+            # ✅ OPTIMISATION: Vérifier AVANT d'ouvrir le navigateur
+            # Ne lance Playwright QUE s'il y a du travail à faire
+            db = get_db_session()
+            try:
+                from sqlalchemy import text
+                count_result = db.execute(
+                    text("SELECT COUNT(*) FROM queue_outbox WHERE status IN ('pending', 'failed') AND retry_count < :max_retry"),
+            # OPTIMISATION: Check DB before launching Playwright
+            pending_items_check = MessageQueue.dequeue_send(limit=1)
+            if not pending_items_check:
+                print("💤 Rien à envoyer...")
+                time.sleep(15)
+                continue
+                    {"max_retry": settings.MAX_RETRY_SEND}
+                )
+                pending_count = count_result.scalar()
+            finally:
+                db.close()
+            
+            if pending_count == 0:
+                logger.info("💤 Aucun message à envoyer, attente...")
+                time.sleep(settings.SEND_WORKER_INTERVAL_SEC)
+                consecutive_errors = 0
+                continue
+            
+            logger.info(f"📋 {pending_count} message(s) en attente - démarrage navigateur...")
             
             # Récupérer les messages pending
             pending_items = MessageQueue.dequeue_send(limit=10)
@@ -181,6 +209,43 @@ def run_send_worker():
                         # Remettre en queue après délai
                         MessageQueue.requeue_failed(item["id"])
             
+            # Launch Playwright only if work exists
+            from src.playwright.browser_manager import BrowserManager
+            bm = BrowserManager()
+            context = bm.start()
+            page = context.new_page()
+            page.goto("https://airbnb.com")
+            time.sleep(2)
+            # Check for login redirect (cookie/session expired)
+            final_url = page.url
+            if "airbnb.com/login" in final_url:
+                print("\033[91m🚨 COOKIES EXPIRÉS - REFAIRE L'AUTH\033[0m")
+                time.sleep(10)
+                bm.close()
+                return
+            # Visual debug: keep browser open 10s before closing on error
+            try:
+                # ...existing code for sending messages...
+                for item in pending_items:
+                    try:
+                        with lock_job(item["id"]):
+                            success = process_outbox_item(item)
+                            if success:
+                                messages_sent_count += 1
+                            else:
+                                messages_failed_count += 1
+                        time.sleep(settings.SEND_WORKER_INTERVAL_SEC)
+                    except CaptchaDetected:
+                        time.sleep(10)
+                        raise
+                    except Exception as e:
+                        logger.error(f"❌ Erreur traitement item {item.get('id')}: {e}")
+                        time.sleep(10)
+                        messages_failed_count += 1
+                        continue
+                consecutive_errors = 0
+            finally:
+                bm.close()
             # Attendre avant la prochaine itération
             time.sleep(settings.SEND_WORKER_INTERVAL_SEC)
             
@@ -210,7 +275,9 @@ def run_send_worker():
             
             # Arrêter le worker proprement
             logger.info("🛑 Arrêt du worker")
-            break
+            # Au lieu d'arrêter définitivement, attendre et reprendre pour rester immortel
+            time.sleep(60)
+            continue
             
         except KeyboardInterrupt:
             logger.info("🛑 Arrêt du worker demandé (Ctrl+C)")
@@ -240,6 +307,15 @@ def run_send_worker():
             backoff_delay = min(settings.RETRY_DELAY_SEC * consecutive_errors, 600)  # Max 10 minutes
             logger.info(f"⏳ Attente {backoff_delay}s avant de réessayer...")
             time.sleep(backoff_delay)
+
+        finally:
+            # Gestionnaire de ressources: s'assurer de la fermeture du navigateur entre itérations
+            try:
+                from src.playwright.browser_manager import BrowserManager
+                bm = BrowserManager()
+                bm.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

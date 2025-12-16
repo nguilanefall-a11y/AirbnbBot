@@ -163,3 +163,4 @@ airbnb-cohost/
 
 ✅ **Le projet est maintenant prêt pour VS Code !**
 
+

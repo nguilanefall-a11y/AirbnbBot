@@ -129,8 +129,13 @@ class BrowserManager:
         """Sauvegarde la session (cookies, storage)"""
         try:
             if self.context:
-                self.context.storage_state(path=str(self._session_path))
-                logger.info(f"💾 Session sauvegardée: {self._session_path}")
+                # S'assurer que nous écrivons vers un fichier, pas un dossier
+                target_path = self._session_path
+                if target_path.is_dir():
+                    target_path = target_path / "storage_state.json"
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                self.context.storage_state(path=str(target_path))
+                logger.info(f"💾 Session sauvegardée: {target_path}")
         except Exception as e:
             logger.error(f"❌ Erreur lors de la sauvegarde de la session: {e}")
     

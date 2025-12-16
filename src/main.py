@@ -5,53 +5,92 @@ Peut être utilisé pour lancer tous les services ensemble
 """
 import sys
 import argparse
+import multiprocessing as mp
 from pathlib import Path
 
 # Ajouter le répertoire parent au path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
+# --- Top-level process targets for multiprocessing (macOS spawn-safe) ---
+def run_api():
+    from src.config import settings
+    from src.api.main import app
+    import uvicorn
+    uvicorn.run(app, host=settings.API_HOST, port=settings.API_PORT)
+
+
+def run_sync_process():
+    from src.workers.sync_worker import run_sync_worker
+    run_sync_worker()
+
+
+def run_send_process():
+    from src.workers.send_worker import run_send_worker
+    run_send_worker()
+
+
+def run_ai_process():
+    from src.workers.ai_worker import run_ai_worker
+    run_ai_worker()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Airbnb Co-Host Bot")
     parser.add_argument(
         "service",
-        choices=["api", "sync", "send", "syncsend", "sync2months", "all"],
+        choices=[
+            "api", "sync", "send", "ai", "syncsend", "sync2months", "all"
+        ],
         help="Service à lancer"
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.service == "api":
-        from src.api.main import app
-        import uvicorn
-        from src.config import settings
-        uvicorn.run(app, host=settings.API_HOST, port=settings.API_PORT)
-    
+        run_api()
+
     elif args.service == "sync":
-        from src.workers.sync_worker import run_sync_worker
-        run_sync_worker()
-    
+        run_sync_process()
+
     elif args.service == "send":
-        from src.workers.send_worker import run_send_worker
-        run_send_worker()
-    
+        run_send_process()
+
+    elif args.service == "ai":
+        run_ai_process()
+
     elif args.service == "syncsend":
         from src.playwright_async.sync_send_worker import start_sync_send
         start_sync_send()
-    
+
     elif args.service == "sync2months":
         from src.playwright_async.sync_scraper_2months import start_sync_2months
         start_sync_2months()
-    
+
     elif args.service == "all":
-        print("🚀 Lancement de tous les services...")
-        print("⚠️  Utilise docker-compose ou PM2 pour lancer tous les services ensemble")
-        print("   Ou lance-les dans des terminaux séparés:")
-        print("   - Terminal 1: python src/main.py api")
-        print("   - Terminal 2: python src/main.py sync")
-        print("   - Terminal 3: python src/main.py send")
-        print("   - Async workers: python src/main.py syncsend")
-        print("   - 2 mois scraper: python src/main.py sync2months")
-        sys.exit(1)
+        mp.set_start_method('spawn', force=True)
+        
+        processes = [
+            mp.Process(target=run_api, name="api"),
+            mp.Process(target=run_sync_process, name="sync_worker"),
+            mp.Process(target=run_send_process, name="send_worker"),
+            mp.Process(target=run_ai_process, name="ai_worker"),
+        ]
+        
+        print("🚀 Démarrage de tous les services en processus séparés...")
+        for p in processes:
+            p.start()
+            print(f"   ✅ {p.name} démarré (PID: {p.pid})")
+        
+        try:
+            for p in processes:
+                p.join()
+        except KeyboardInterrupt:
+            print("\n🛑 Arrêt de tous les services...")
+            for p in processes:
+                p.terminate()
+            for p in processes:
+                p.join(timeout=5)
 
 
 if __name__ == "__main__":

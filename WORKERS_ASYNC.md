@@ -62,3 +62,4 @@ Les workers utilisent les tables suivantes :
 - Les délais aléatoires simulent un comportement humain
 - Les messages sont dédupliqués par ID unique basé sur conversation_id + timestamp + sender + content hash
 
+

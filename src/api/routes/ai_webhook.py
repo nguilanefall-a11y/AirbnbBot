@@ -124,3 +124,4 @@ async def ai_webhook_simple(body: dict):
         logger.error(f"❌ Erreur webhook simple: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+

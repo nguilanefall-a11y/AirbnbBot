@@ -92,3 +92,4 @@ curl http://localhost:8000/health | jq
 - Pour accéder depuis d'autres machines sur le réseau local, utilise l'IP de ta machine au lieu de `localhost`
 - La documentation interactive est disponible sur `/docs`
 
+

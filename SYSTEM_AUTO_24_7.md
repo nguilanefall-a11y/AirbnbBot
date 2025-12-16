@@ -247,3 +247,4 @@ Une fois tout configuré :
 - ✅ **Aucune intervention humaine nécessaire**
 - ✅ Le système tourne 24/7 en continu
 
+

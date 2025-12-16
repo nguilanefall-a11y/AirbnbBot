@@ -2,6 +2,7 @@
 Actions Playwright pour envoyer des messages sur Airbnb
 """
 import logging
+import time
 from typing import Tuple, Optional
 from playwright.sync_api import Page
 from src.playwright.browser_manager import BrowserManager
@@ -28,6 +29,23 @@ def send_message(thread_id: str, message: str) -> Tuple[bool, Optional[str]]:
         page = manager.new_page()
         
         try:
+            # ✅ VÉRIFICATION COOKIES: Tester la session avant de continuer
+            logger.info("🔐 Vérification de la validité de la session...")
+            page.goto("https://www.airbnb.com/hosting/inbox", wait_until="domcontentloaded", timeout=30000)
+            random_delay(2000, 3000)
+            
+            current_url = page.url
+            if "/login" in current_url or "/authenticate" in current_url:
+                logger.error("🚨 COOKIES EXPIRÉS - SESSION INVALIDE")
+                logger.error("🚨 Action requise: Refaire l'authentification avec reconnect_airbnb.py")
+                # Pause visuelle pour debug
+                if not settings.AIRBNB_HEADLESS:
+                    logger.info("⏸️  Pause de 10s pour inspection visuelle...")
+                    time.sleep(10)
+                return False, "🚨 COOKIES EXPIRÉS - REFAIRE L'AUTH"
+            
+            logger.info("✅ Session valide, continuons...")
+            
             # Naviguer vers la conversation
             thread_url = THREAD_URL_TEMPLATE.format(thread_id=thread_id)
             logger.info(f"🌐 Navigation vers: {thread_url}")

@@ -18,8 +18,9 @@ class Settings(BaseSettings):
     PLAYWRIGHT_SESSION_PATH: str = os.getenv("PLAYWRIGHT_SESSION_PATH", "./session")
     PLAYWRIGHT_SESSION_DIR: str = os.getenv("PLAYWRIGHT_SESSION_DIR", "./session")
     AIRBNB_BASE_URL: str = "https://www.airbnb.com"
-    AIRBNB_HEADLESS: bool = os.getenv("AIRBNB_HEADLESS", "true").lower() == "true"
+    AIRBNB_HEADLESS: bool = True  # FORCE HEADLESS - PAS D'OUVERTURE VISUELLE
     PLAYWRIGHT_TIMEOUT: int = int(os.getenv("PLAYWRIGHT_TIMEOUT", "60000"))
+    DEBUG_SCREENSHOTS: bool = os.getenv("DEBUG_SCREENSHOTS", "true").lower() == "true"
     
     # Workers
     SCRAPE_INTERVAL_SEC: int = int(os.getenv("SCRAPE_INTERVAL_SEC", "45"))
@@ -46,7 +47,7 @@ class Settings(BaseSettings):
     
     # API
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
-    API_PORT: int = int(os.getenv("API_PORT", "8000"))
+    API_PORT: int = int(os.getenv("API_PORT", "5000"))
     API_SECRET_KEY: str = os.getenv("API_SECRET_KEY", "change-me-in-production")
     
     class Config:
