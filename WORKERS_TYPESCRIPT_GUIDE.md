@@ -324,6 +324,34 @@ SELECT guest_name, last_message_at FROM conversations ORDER BY last_message_at D
 
 ### Sur Mac Serveur:
 
+#### Option A: Script Automatisé (Recommandé) 🚀
+
+```bash
+# 1. Cloner le repository (première fois uniquement)
+cd ~
+git clone https://github.com/nguilanefall-a11y/AirbnbBot.git
+cd AirbnbBot
+
+# 2. Transférer les fichiers sensibles depuis Mac principal
+# (airbnb-session.json et .env doivent être dans ~/AirbnbBot/)
+
+# 3. Lancer le script de déploiement automatisé
+bash deploy-mac-serveur.sh
+```
+
+Le script fait TOUT automatiquement :
+- ✅ `git pull` pour récupérer les dernières modifications
+- ✅ `npm install` pour installer les dépendances
+- ✅ Installation de Playwright Chromium
+- ✅ Vérification des fichiers sensibles (`.env`, `airbnb-session.json`)
+- ✅ Création de la table `queue_outbox`
+- ✅ Installation de PM2
+- ✅ Correction automatique du chemin `cwd` dans `pm2-workers.json`
+- ✅ Lancement des 3 workers
+- ✅ Affichage du statut
+
+#### Option B: Manuelle (Si script échoue)
+
 - [ ] Repository cloné depuis GitHub
 - [ ] `npm install` terminé
 - [ ] Playwright Chromium installé (`npx playwright install chromium`)
