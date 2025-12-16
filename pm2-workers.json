@@ -11,7 +11,7 @@
       "restart_delay": 5000,
       "env": {
         "NODE_ENV": "production",
-        "SCRAPE_INTERVAL_SEC": "45",
+        "POLLING_INTERVAL_SEC": "10",
         "AIRBNB_HEADLESS": "true"
       },
       "error_file": "./logs/sync-error.log",
@@ -48,7 +48,7 @@
       "restart_delay": 5000,
       "env": {
         "NODE_ENV": "production",
-        "SEND_INTERVAL_SEC": "20"
+        "SEND_INTERVAL_SEC": "5"
       },
       "error_file": "./logs/send-error.log",
       "out_file": "./logs/send-out.log",

@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
-const SEND_INTERVAL_SEC = parseInt(process.env.SEND_INTERVAL_SEC || '20', 10);
+const SEND_INTERVAL_SEC = parseInt(process.env.SEND_INTERVAL_SEC || '5', 10); // 5s comme Gemini recommande (pas de navigateur = plus rapide)
 const SESSION_FILE = path.join(process.cwd(), 'airbnb-session.json');
 const API_KEY = 'd306zoyjsyarp7ifhu67rjxn52tv0t20'; // API key publique Airbnb
 

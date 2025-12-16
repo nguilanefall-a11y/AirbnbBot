@@ -1,10 +1,11 @@
 /**
- * SYNC WORKER - Scraping Inbox Airbnb (inspiré du système Python)
+ * SYNC WORKER - Badge Polling Optimisé (Architecture Élite)
  * 
- * Rôle: Scraper l'inbox Airbnb toutes les 45s via Playwright
+ * Rôle: Détecter nouveaux messages via Badge Polling (pas GraphQL!)
+ * - Maintient le navigateur OUVERT entre les cycles (optimisation CPU)
+ * - Badge polling toutes les 10-15s
+ * - Déclenche l'AI worker immédiatement si nouveau message
  * - Réutilise airbnb-session.json
- * - Détection captcha automatique
- * - Insertion dans conversations + messages
  * - Resilience infinie (never exit)
  */
 
@@ -15,7 +16,7 @@ import { eq, sql } from 'drizzle-orm';
 import fs from 'fs';
 import path from 'path';
 
-const SCRAPE_INTERVAL_SEC = parseInt(process.env.SCRAPE_INTERVAL_SEC || '45', 10);
+const POLLING_INTERVAL_SEC = parseInt(process.env.POLLING_INTERVAL_SEC || '10', 10); // 10-15s comme Gemini recommande
 const SESSION_FILE = path.join(process.cwd(), 'airbnb-session.json');
 
 interface ThreadData {
@@ -98,124 +99,116 @@ async function launchBrowser(): Promise<{ browser: Browser; context: BrowserCont
 }
 
 /**
- * Scrape l'inbox via GraphQL (méthode préférée)
+ * Badge Polling Élite : Détecte UNIQUEMENT le badge de notification
+ * PAS de GraphQL - Plus fiable et stable
  */
-async function scrapeInboxGraphQL(page: Page): Promise<ThreadData[]> {
+async function checkUnreadBadge(page: Page): Promise<number> {
   try {
-    // Intercepter les requêtes GraphQL ViaductInboxData
-    const graphqlResponses: any[] = [];
+    // Recharger la page (plus léger que de fermer/rouvrir le navigateur)
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2000);
 
-    page.on('response', async (response) => {
-      const url = response.url();
-      if (url.includes('/api/v3/ViaductInboxData') || url.includes('InboxData')) {
-        try {
-          const json = await response.json();
-          graphqlResponses.push(json);
-        } catch (e) {
-          // Ignore parsing errors
+    // Sélecteurs du badge de notification
+    const badgeSelectors = [
+      'span[data-testid="unread-badge"]',
+      '.notification-badge',
+      '[class*="badge"][class*="unread"]',
+      'div[aria-label*="unread"]'
+    ];
+
+    for (const selector of badgeSelectors) {
+      const badge = await page.locator(selector).first();
+      const count = await badge.count();
+
+      if (count > 0) {
+        const badgeText = await badge.textContent();
+        const unreadCount = parseInt(badgeText || '0', 10);
+
+        if (unreadCount > 0) {
+          console.log(`🔔 [SYNC] ${unreadCount} message(s) non lu(s) détecté(s)`);
+          return unreadCount;
         }
       }
-    });
-
-    // Naviguer vers inbox pour déclencher les requêtes
-    await page.goto('https://www.airbnb.com/hosting/inbox', { timeout: 30000 });
-    await page.waitForTimeout(5000); // Attendre que GraphQL se charge
-
-    // Parser les réponses GraphQL
-    const threads: ThreadData[] = [];
-
-    for (const response of graphqlResponses) {
-      const parsedThreads = parseGraphQLResponse(response);
-      threads.push(...parsedThreads);
     }
 
-    if (threads.length > 0) {
-      console.log(`✅ [SYNC] ${threads.length} threads scrapés via GraphQL`);
-      return threads;
-    }
-
-    return [];
+    console.log(`✅ [SYNC] Aucun message non lu`);
+    return 0;
   } catch (error) {
-    console.error('❌ [SYNC] Erreur GraphQL:', error);
-    return [];
+    console.error('❌ [SYNC] Erreur badge polling:', error);
+    return 0;
   }
 }
 
 /**
- * Parse les réponses GraphQL (5 structures supportées comme Python)
+ * Extrait les threads non lus UNIQUEMENT quand badge > 0
  */
-function parseGraphQLResponse(data: any): ThreadData[] {
-  const threads: ThreadData[] = [];
-
-  try {
-    // Structure 1: data.viewer.inbox_threads.edges
-    if (data?.data?.viewer?.inbox_threads?.edges) {
-      for (const edge of data.data.viewer.inbox_threads.edges) {
-        const node = edge.node;
-        threads.push({
-          airbnbThreadId: node.id,
-          guestName: node.guest?.name || 'Voyageur',
-          lastMessagePreview: node.last_message?.text || '',
-          lastMessageTime: new Date(node.last_message_at),
-          isUnread: node.unread_count > 0,
-          airbnbUrl: `https://www.airbnb.com/hosting/inbox/folder/all/${node.id}`
-        });
-      }
-    }
-
-    // Structure 2: data.inbox.threads
-    if (data?.data?.inbox?.threads) {
-      for (const thread of data.data.inbox.threads) {
-        threads.push({
-          airbnbThreadId: thread.id,
-          guestName: thread.guest_name || 'Voyageur',
-          lastMessagePreview: thread.last_message_preview || '',
-          lastMessageTime: new Date(thread.last_message_time),
-          isUnread: thread.is_unread,
-          airbnbUrl: `https://www.airbnb.com/hosting/inbox/folder/all/${thread.id}`
-        });
-      }
-    }
-
-    // Ajouter les 3 autres structures si nécessaire
-  } catch (error) {
-    console.error('❌ [SYNC] Erreur parsing GraphQL:', error);
-  }
-
-  return threads;
-}
-
-/**
- * Fallback: Scrape via DOM si GraphQL échoue
- */
-async function scrapeInboxDOM(page: Page): Promise<ThreadData[]> {
+async function extractUnreadThreads(page: Page): Promise<ThreadData[]> {
   try {
     await page.goto('https://www.airbnb.com/hosting/inbox', { timeout: 30000 });
-    await page.waitForSelector('[data-testid="inbox-thread"]', { timeout: 10000 });
+    await page.waitForTimeout(3000);
 
-    const threads = await page.$$eval('[data-testid="inbox-thread"]', (elements) => {
-      return elements.map((el) => {
-        const threadId = el.getAttribute('data-thread-id') || '';
-        const guestName = el.querySelector('[data-testid="guest-name"]')?.textContent || 'Voyageur';
-        const lastMessage = el.querySelector('[data-testid="message-preview"]')?.textContent || '';
-        const unreadBadge = el.querySelector('[data-testid="unread-badge"]');
+    // Trouver les conversations avec badge unread
+    const threads = await page.$$eval(
+      '[data-testid="inbox-thread"], .thread-item, [class*="conversation"]',
+      (elements) => {
+        return elements
+          .filter((el) => {
+            // Vérifier si cette conversation a un badge non lu
+            const unreadBadge = el.querySelector('[data-testid="unread-badge"], .badge, [class*="unread"]');
+            return !!unreadBadge;
+          })
+          .map((el) => {
+            const threadId = el.getAttribute('data-thread-id') || el.getAttribute('data-id') || '';
+            const guestName = el.querySelector('[data-testid="guest-name"], .guest-name')?.textContent?.trim() || 'Voyageur';
+            const lastMessage = el.querySelector('[data-testid="message-preview"], .message-preview')?.textContent?.trim() || '';
 
-        return {
-          airbnbThreadId: threadId,
-          guestName,
-          lastMessagePreview: lastMessage,
-          lastMessageTime: new Date(),
-          isUnread: !!unreadBadge,
-          airbnbUrl: `https://www.airbnb.com/hosting/inbox/folder/all/${threadId}`
-        };
-      });
-    });
+            return {
+              airbnbThreadId: threadId,
+              guestName,
+              lastMessagePreview: lastMessage,
+              lastMessageTime: new Date(),
+              isUnread: true,
+              airbnbUrl: `https://www.airbnb.com/hosting/inbox/folder/all/${threadId}`
+            };
+          });
+      }
+    );
 
-    console.log(`✅ [SYNC] ${threads.length} threads scrapés via DOM`);
+    console.log(`✅ [SYNC] ${threads.length} thread(s) non lu(s) extrait(s)`);
     return threads;
   } catch (error) {
-    console.error('❌ [SYNC] Erreur DOM:', error);
+    console.error('❌ [SYNC] Erreur extraction threads:', error);
     return [];
+  }
+}
+
+/**
+ * Extrait le contenu complet d'un message depuis un thread
+ */
+async function extractMessageContent(page: Page, threadId: string): Promise<MessageData | null> {
+  try {
+    const threadUrl = `https://www.airbnb.com/hosting/inbox/folder/all/${threadId}`;
+    await page.goto(threadUrl, { timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    // Extraire le dernier message de l'invité
+    const messageElement = await page.locator('[data-testid="message-item"], .message').last();
+
+    if (await messageElement.count() === 0) {
+      return null;
+    }
+
+    const content = await messageElement.textContent();
+    const isFromGuest = !(await messageElement.locator('[data-is-host="true"]').count() > 0);
+
+    return {
+      content: content?.trim() || '',
+      isFromGuest,
+      timestamp: new Date()
+    };
+  } catch (error) {
+    console.error(`❌ [SYNC] Erreur extraction message ${threadId}:`, error);
+    return null;
   }
 }
 
@@ -270,59 +263,126 @@ async function upsertConversation(thread: ThreadData) {
 }
 
 /**
- * Boucle infinie de scraping (Pattern Python)
+ * Déclenche l'AI worker immédiatement (pas de polling DB!)
+ */
+async function triggerAIWorker(conversationId: number, messageId: number) {
+  try {
+    // Marquer le message comme "à traiter par l'IA"
+    await db.execute(sql`
+      UPDATE messages
+      SET replied_at = NULL
+      WHERE id = ${messageId}
+    `);
+
+    console.log(`🤖 [SYNC] AI worker déclenché pour message ${messageId}`);
+  } catch (error) {
+    console.error('❌ [SYNC] Erreur déclenchement AI:', error);
+  }
+}
+
+/**
+ * Boucle infinie Badge Polling (Architecture Élite)
+ * OPTIMISATION: Garde le navigateur OUVERT entre les cycles
  */
 async function runSyncWorkerInfinite() {
-  console.log('🚀 [SYNC] Worker démarré - Mode résilient infini');
+  console.log('🚀 [SYNC] Worker démarré - Mode Badge Polling Élite');
+
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+  let page: Page | null = null;
 
   while (true) {
-    let browser: Browser | null = null;
-
     try {
-      console.log('🔄 [SYNC] Démarrage cycle scraping...');
+      // 1. Lancement navigateur UNIQUEMENT si pas déjà ouvert (optimisation Gemini)
+      if (!browser || !page) {
+        console.log('🔄 [SYNC] Lancement navigateur initial...');
+        const launched = await launchBrowser();
+        browser = launched.browser;
+        context = launched.context;
+        page = launched.page;
 
-      // 1. Lancement navigateur
-      const { browser: b, context, page } = await launchBrowser();
-      browser = b;
+        // Navigation initiale vers inbox
+        await page.goto('https://www.airbnb.com/hosting/inbox', { timeout: 30000 });
+      }
 
       // 2. Détection captcha
-      await page.goto('https://www.airbnb.com/hosting/inbox', { timeout: 30000 });
-      await page.waitForTimeout(2000);
-
       if (await detectCaptcha(page)) {
         console.warn('🤖 [SYNC] Captcha détecté, pause 60s');
         await page.waitForTimeout(60000);
-        continue; // Pas de exit, juste retry
+        continue;
       }
 
-      // 3. Scraping GraphQL (préféré)
-      let threads = await scrapeInboxGraphQL(page);
+      // 3. Badge Polling (Méthode Élite - pas GraphQL!)
+      const unreadCount = await checkUnreadBadge(page);
 
-      // 4. Fallback DOM si GraphQL échoue
-      if (threads.length === 0) {
-        console.warn('⚠️ [SYNC] GraphQL failed, fallback DOM');
-        threads = await scrapeInboxDOM(page);
+      if (unreadCount === 0) {
+        console.log('✅ [SYNC] Aucun nouveau message');
+        await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_SEC * 1000));
+        continue;
       }
 
-      // 5. Insertion DB
-      for (const thread of threads) {
-        await upsertConversation(thread);
+      // 4. Extraction threads non lus UNIQUEMENT
+      console.log(`📬 [SYNC] Extraction des ${unreadCount} thread(s) non lu(s)...`);
+      const unreadThreads = await extractUnreadThreads(page);
+
+      // 5. Pour chaque thread non lu, extraire le message et déclencher l'IA
+      for (const thread of unreadThreads) {
+        try {
+          // Upsert conversation
+          await upsertConversation(thread);
+
+          // Extraire le message complet
+          const message = await extractMessageContent(page, thread.airbnbThreadId);
+
+          if (message && message.isFromGuest) {
+            // Insérer le message dans la DB
+            const conversationResult = await db
+              .select()
+              .from(conversations)
+              .where(eq(conversations.externalId, thread.airbnbThreadId))
+              .limit(1);
+
+            if (conversationResult.length > 0) {
+              const conversationId = conversationResult[0].id;
+
+              // Insérer le message
+              const insertResult = await db.insert(messages).values({
+                conversationId,
+                content: message.content,
+                isFromGuest: true,
+                timestamp: message.timestamp,
+                repliedAt: null // Marqué comme non répondu
+              }).returning({ id: messages.id });
+
+              const messageId = insertResult[0].id;
+
+              // DÉCLENCHEMENT IMMÉDIAT DE L'IA (pas de polling!)
+              await triggerAIWorker(conversationId, messageId);
+
+              console.log(`✅ [SYNC] Message ${messageId} extrait et IA déclenchée`);
+            }
+          }
+        } catch (error) {
+          console.error(`❌ [SYNC] Erreur traitement thread ${thread.airbnbThreadId}:`, error);
+          continue;
+        }
       }
 
-      console.log(`✅ [SYNC] Cycle terminé: ${threads.length} conversations synchronisées`);
+      console.log(`✅ [SYNC] Cycle terminé: ${unreadThreads.length} threads traités`);
 
     } catch (error: any) {
       console.error(`❌ [SYNC] Erreur worker:`, error.message);
-      // Pas de exit, juste log et retry
-    } finally {
-      // Cleanup navigateur (TOUJOURS exécuté)
-      if (browser) {
-        await browser.close();
-      }
 
-      // Pause avant prochain cycle
-      console.log(`💤 [SYNC] Sleep ${SCRAPE_INTERVAL_SEC}s avant prochain cycle`);
-      await new Promise(resolve => setTimeout(resolve, SCRAPE_INTERVAL_SEC * 1000));
+      // Si erreur critique, fermer et relancer navigateur
+      if (browser) {
+        await browser.close().catch(() => {});
+        browser = null;
+        page = null;
+      }
+    } finally {
+      // Pause avant prochain cycle (SANS fermer le navigateur!)
+      console.log(`💤 [SYNC] Sleep ${POLLING_INTERVAL_SEC}s avant prochain cycle`);
+      await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_SEC * 1000));
     }
   }
 }
