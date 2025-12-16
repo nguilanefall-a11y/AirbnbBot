@@ -2,8 +2,8 @@
 -- Utilisée par ai_worker (INSERT) et send_worker (SELECT + UPDATE)
 
 CREATE TABLE IF NOT EXISTS queue_outbox (
-    id SERIAL PRIMARY KEY,
-    conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id VARCHAR NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     message_content TEXT NOT NULL,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed')),
     created_at TIMESTAMP DEFAULT NOW(),
