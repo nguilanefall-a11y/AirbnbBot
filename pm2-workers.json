@@ -1,0 +1,59 @@
+{
+  "apps": [
+    {
+      "name": "airbnb-sync",
+      "script": "npx",
+      "args": "tsx workers/sync_worker.ts",
+      "cwd": "/Users/alpha/Downloads/AirbnbBot 2",
+      "autorestart": true,
+      "max_restarts": 999999,
+      "min_uptime": "10s",
+      "restart_delay": 5000,
+      "env": {
+        "NODE_ENV": "production",
+        "SCRAPE_INTERVAL_SEC": "45",
+        "AIRBNB_HEADLESS": "true"
+      },
+      "error_file": "./logs/sync-error.log",
+      "out_file": "./logs/sync-out.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true
+    },
+    {
+      "name": "airbnb-ai",
+      "script": "npx",
+      "args": "tsx workers/ai_worker.ts",
+      "cwd": "/Users/alpha/Downloads/AirbnbBot 2",
+      "autorestart": true,
+      "max_restarts": 999999,
+      "min_uptime": "10s",
+      "restart_delay": 5000,
+      "env": {
+        "NODE_ENV": "production",
+        "AI_INTERVAL_SEC": "15"
+      },
+      "error_file": "./logs/ai-error.log",
+      "out_file": "./logs/ai-out.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true
+    },
+    {
+      "name": "airbnb-send",
+      "script": "npx",
+      "args": "tsx workers/send_worker.ts",
+      "cwd": "/Users/alpha/Downloads/AirbnbBot 2",
+      "autorestart": true,
+      "max_restarts": 999999,
+      "min_uptime": "10s",
+      "restart_delay": 5000,
+      "env": {
+        "NODE_ENV": "production",
+        "SEND_INTERVAL_SEC": "20"
+      },
+      "error_file": "./logs/send-error.log",
+      "out_file": "./logs/send-out.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true
+    }
+  ]
+}
