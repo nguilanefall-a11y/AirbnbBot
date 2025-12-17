@@ -1,0 +1,14 @@
+# ⚠️ FICHIERS SECRETS
+
+Les fichiers suivants contiennent des credentials et NE SONT PAS sur GitHub :
+
+- `env-production.txt` - Variables d'environnement complètes
+- `airbnb-session.json` - 64 cookies de session Airbnb
+
+**Pour obtenir ces fichiers :**
+
+1. **Via AirDrop** (depuis Mac principal)
+2. **Via USB/Clé** 
+3. **Via partage réseau local**
+
+**OU recréer manuellement** en suivant `README.md` dans ce dossier.

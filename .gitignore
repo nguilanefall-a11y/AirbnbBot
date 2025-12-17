@@ -23,6 +23,10 @@ logs/
 .env.local
 .env.*.local
 
+# Mac Serveur Config (SECRETS - NE PAS PUSHER)
+MAC_SERVEUR_CONFIG/env-production.txt
+MAC_SERVEUR_CONFIG/airbnb-session.json
+
 # IDE
 .vscode/
 .idea/
