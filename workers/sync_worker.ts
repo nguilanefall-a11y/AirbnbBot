@@ -1,399 +1,544 @@
 /**
- * SYNC WORKER - Badge Polling Optimisé (Architecture Élite)
+ * SYNC WORKER - ARCHITECTURE HYBRIDE (Playwright Harvesting + API GraphQL Polling)
  * 
- * Rôle: Détecter nouveaux messages via Badge Polling (pas GraphQL!)
- * - Maintient le navigateur OUVERT entre les cycles (optimisation CPU)
- * - Badge polling toutes les 10-15s
- * - Déclenche l'AI worker immédiatement si nouveau message
- * - Réutilise airbnb-session.json
- * - Resilience infinie (never exit)
+ * PHASE 1: HARVESTING (Playwright)
+ * - Lance navigateur et va sur /hosting/inbox
+ * - Extrait x-csrf-token, x-airbnb-api-key, cookies
+ * - Intercepte requêtes réseau si nécessaire
+ * 
+ * PHASE 2: POLLING API (Axios - Boucle Infinie)
+ * - Boucle while(true) toutes les 10s
+ * - Appel MessagingThreadListQuery GraphQL
+ * - Upsert conversations en DB
+ * - Détecte messages non lus
+ * - Re-harvest tokens si 401/403
  */
 
-import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import 'dotenv/config';
+import { chromium, Browser, Page, BrowserContext } from 'playwright';
+import axios, { AxiosError } from 'axios';
 import { db } from '../server/db';
 import { conversations, messages } from '../shared/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import fs from 'fs';
 import path from 'path';
 
-const POLLING_INTERVAL_SEC = parseInt(process.env.POLLING_INTERVAL_SEC || '10', 10); // 10-15s comme Gemini recommande
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+const POLLING_INTERVAL_SEC = parseInt(process.env.POLLING_INTERVAL_SEC || '10', 10);
 const SESSION_FILE = path.join(process.cwd(), 'airbnb-session.json');
+const INBOX_URL = 'https://www.airbnb.com/hosting/inbox';
+const API_ENDPOINT = 'https://www.airbnb.com/api/v3/MessagingThreadListQuery';
 
-interface ThreadData {
-  airbnbThreadId: string;
-  guestName: string;
-  listingTitle?: string;
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface AuthHeaders {
+  'x-csrf-token': string;
+  'x-airbnb-api-key': string;
+  'Cookie': string;
+  'User-Agent': string;
+  'Content-Type': string;
+  'Accept': string;
+  'Origin': string;
+  'Referer': string;
+}
+
+interface AirbnbThread {
+  id: string;
   lastMessagePreview: string;
-  lastMessageTime: Date;
   isUnread: boolean;
-  airbnbUrl: string;
+  guest: {
+    firstName: string;
+    lastName?: string;
+    id: string;
+  };
+  lastMessageTimestamp: number;
+  listing?: {
+    id: string;
+    name: string;
+  };
 }
 
-interface MessageData {
-  content: string;
-  isFromGuest: boolean;
-  timestamp: Date;
-  airbnbMessageId?: string;
+interface AirbnbAPIResponse {
+  data: {
+    messaging: {
+      threadList: {
+        threads: AirbnbThread[];
+        hasMore: boolean;
+      };
+    };
+  };
+  errors?: any[];
 }
+
+// ============================================================================
+// PHASE 1: HARVESTING - EXTRACTION DES SECRETS
+// ============================================================================
 
 /**
- * Détecte si un captcha est présent
+ * Charge la session Playwright depuis airbnb-session.json
  */
-async function detectCaptcha(page: Page): Promise<boolean> {
+async function loadPlaywrightSession(context: BrowserContext): Promise<void> {
   try {
-    const captchaSelectors = [
-      'iframe[src*="recaptcha"]',
-      'div[class*="captcha"]',
-      '#px-captcha',
-      '[data-testid="captcha"]'
-    ];
-
-    for (const selector of captchaSelectors) {
-      const count = await page.locator(selector).count();
-      if (count > 0) {
-        console.log(`🤖 [SYNC] Captcha détecté: ${selector}`);
-        return true;
-      }
+    if (!fs.existsSync(SESSION_FILE)) {
+      throw new Error(`❌ Fichier session introuvable: ${SESSION_FILE}`);
     }
 
-    return false;
-  } catch (error) {
-    return false;
-  }
-}
-
-/**
- * Lance le navigateur avec la session persistée
- */
-async function launchBrowser(): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
-  const browser = await chromium.launch({
-    headless: true, // FORCE HEADLESS
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled'
-    ]
-  });
-
-  let context: BrowserContext;
-
-  // Charger la session si elle existe
-  if (fs.existsSync(SESSION_FILE)) {
     const sessionData = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
-    context = await browser.newContext({
-      storageState: sessionData,
-      viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-    });
-    console.log('✅ [SYNC] Session Airbnb chargée');
-  } else {
-    context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-    });
-    console.warn('⚠️ [SYNC] Aucune session trouvée, démarrage sans cookies');
-  }
+    const cookies = sessionData.cookies || sessionData;
 
-  const page = await context.newPage();
-  return { browser, context, page };
+    if (!Array.isArray(cookies) || cookies.length === 0) {
+      throw new Error('❌ Format de cookies invalide');
+    }
+
+    await context.addCookies(cookies);
+    console.log(`✅ [HARVEST] ${cookies.length} cookies chargés depuis ${SESSION_FILE}`);
+  } catch (error) {
+    console.error('❌ [HARVEST] Erreur chargement session:', error);
+    throw error;
+  }
 }
 
 /**
- * Badge Polling Élite : Détecte UNIQUEMENT le badge de notification
- * PAS de GraphQL - Plus fiable et stable
+ * Extrait le CSRF token depuis la page
  */
-async function checkUnreadBadge(page: Page): Promise<number> {
+async function extractCsrfToken(page: Page): Promise<string> {
   try {
-    // Recharger la page (plus léger que de fermer/rouvrir le navigateur)
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    // Méthode 1: Meta tag
+    const csrfFromMeta = await page.evaluate(() => {
+      const meta = document.querySelector('meta[name="csrf-token"]');
+      return meta ? meta.getAttribute('content') : null;
+    });
 
-    // Sélecteurs du badge de notification
-    const badgeSelectors = [
-      'span[data-testid="unread-badge"]',
-      '.notification-badge',
-      '[class*="badge"][class*="unread"]',
-      'div[aria-label*="unread"]'
-    ];
+    if (csrfFromMeta) {
+      console.log(`✅ [HARVEST] CSRF token extrait depuis <meta>: ${csrfFromMeta.substring(0, 20)}...`);
+      return csrfFromMeta;
+    }
 
-    for (const selector of badgeSelectors) {
-      const badge = await page.locator(selector).first();
-      const count = await badge.count();
+    // Méthode 2: Window variable
+    const csrfFromWindow = await page.evaluate(() => {
+      return (window as any)._csrf_token || (window as any).csrfToken || null;
+    });
 
-      if (count > 0) {
-        const badgeText = await badge.textContent();
-        const unreadCount = parseInt(badgeText || '0', 10);
+    if (csrfFromWindow) {
+      console.log(`✅ [HARVEST] CSRF token extrait depuis window: ${csrfFromWindow.substring(0, 20)}...`);
+      return csrfFromWindow;
+    }
 
-        if (unreadCount > 0) {
-          console.log(`🔔 [SYNC] ${unreadCount} message(s) non lu(s) détecté(s)`);
-          return unreadCount;
+    // Méthode 3: Cookies
+    const cookies = await page.context().cookies();
+    const csrfCookie = cookies.find(c => c.name === 'csrf_token' || c.name === '_csrf_token');
+    
+    if (csrfCookie) {
+      console.log(`✅ [HARVEST] CSRF token extrait depuis cookie: ${csrfCookie.value.substring(0, 20)}...`);
+      return csrfCookie.value;
+    }
+
+    throw new Error('❌ CSRF token introuvable');
+  } catch (error) {
+    console.error('❌ [HARVEST] Erreur extraction CSRF:', error);
+    throw error;
+  }
+}
+
+/**
+ * Extrait l'API key Airbnb depuis la page ou les requêtes réseau
+ */
+async function extractApiKey(page: Page): Promise<string> {
+  try {
+    // Méthode 1: Config bootstrap dans le HTML
+    const apiKeyFromConfig = await page.evaluate(() => {
+      const scripts = Array.from(document.querySelectorAll('script'));
+      for (const script of scripts) {
+        const content = script.textContent || '';
+        
+        // Chercher patterns communs
+        const patterns = [
+          /api[_-]?key["']\s*:\s*["']([^"']+)["']/i,
+          /x-airbnb-api-key["']\s*:\s*["']([^"']+)["']/i,
+          /apiKey["']\s*:\s*["']([^"']+)["']/i,
+          /"key"\s*:\s*"([a-z0-9]{32})"/i
+        ];
+
+        for (const pattern of patterns) {
+          const match = content.match(pattern);
+          if (match && match[1]) {
+            return match[1];
+          }
         }
       }
-    }
-
-    console.log(`✅ [SYNC] Aucun message non lu`);
-    return 0;
-  } catch (error) {
-    console.error('❌ [SYNC] Erreur badge polling:', error);
-    return 0;
-  }
-}
-
-/**
- * Extrait les threads non lus UNIQUEMENT quand badge > 0
- */
-async function extractUnreadThreads(page: Page): Promise<ThreadData[]> {
-  try {
-    await page.goto('https://www.airbnb.com/hosting/inbox', { timeout: 30000 });
-    await page.waitForTimeout(3000);
-
-    // Trouver les conversations avec badge unread
-    const threads = await page.$$eval(
-      '[data-testid="inbox-thread"], .thread-item, [class*="conversation"]',
-      (elements) => {
-        return elements
-          .filter((el) => {
-            // Vérifier si cette conversation a un badge non lu
-            const unreadBadge = el.querySelector('[data-testid="unread-badge"], .badge, [class*="unread"]');
-            return !!unreadBadge;
-          })
-          .map((el) => {
-            const threadId = el.getAttribute('data-thread-id') || el.getAttribute('data-id') || '';
-            const guestName = el.querySelector('[data-testid="guest-name"], .guest-name')?.textContent?.trim() || 'Voyageur';
-            const lastMessage = el.querySelector('[data-testid="message-preview"], .message-preview')?.textContent?.trim() || '';
-
-            return {
-              airbnbThreadId: threadId,
-              guestName,
-              lastMessagePreview: lastMessage,
-              lastMessageTime: new Date(),
-              isUnread: true,
-              airbnbUrl: `https://www.airbnb.com/hosting/inbox/folder/all/${threadId}`
-            };
-          });
-      }
-    );
-
-    console.log(`✅ [SYNC] ${threads.length} thread(s) non lu(s) extrait(s)`);
-    return threads;
-  } catch (error) {
-    console.error('❌ [SYNC] Erreur extraction threads:', error);
-    return [];
-  }
-}
-
-/**
- * Extrait le contenu complet d'un message depuis un thread
- */
-async function extractMessageContent(page: Page, threadId: string): Promise<MessageData | null> {
-  try {
-    const threadUrl = `https://www.airbnb.com/hosting/inbox/folder/all/${threadId}`;
-    await page.goto(threadUrl, { timeout: 30000 });
-    await page.waitForTimeout(2000);
-
-    // Extraire le dernier message de l'invité
-    const messageElement = await page.locator('[data-testid="message-item"], .message').last();
-
-    if (await messageElement.count() === 0) {
       return null;
+    });
+
+    if (apiKeyFromConfig) {
+      console.log(`✅ [HARVEST] API Key extraite depuis config: ${apiKeyFromConfig.substring(0, 20)}...`);
+      return apiKeyFromConfig;
     }
 
-    const content = await messageElement.textContent();
-    const isFromGuest = !(await messageElement.locator('[data-is-host="true"]').count() > 0);
+    // Méthode 2: Interception réseau
+    console.log('🔍 [HARVEST] API Key non trouvée dans le HTML, interception réseau...');
+    
+    const apiKeyFromNetwork = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Timeout: API Key non capturée'));
+      }, 15000);
 
-    return {
-      content: content?.trim() || '',
-      isFromGuest,
-      timestamp: new Date()
-    };
+      page.on('request', (request) => {
+        const url = request.url();
+        if (url.includes('/api/v3/') || url.includes('airbnb.com/api/')) {
+          const headers = request.headers();
+          const apiKey = headers['x-airbnb-api-key'];
+          
+          if (apiKey) {
+            clearTimeout(timeout);
+            console.log(`✅ [HARVEST] API Key capturée depuis requête réseau: ${apiKey.substring(0, 20)}...`);
+            resolve(apiKey);
+          }
+        }
+      });
+
+      // Trigger une interaction pour forcer des requêtes
+      page.evaluate(() => {
+        window.scrollBy(0, 100);
+      }).catch(() => {});
+    });
+
+    return apiKeyFromNetwork;
+
   } catch (error) {
-    console.error(`❌ [SYNC] Erreur extraction message ${threadId}:`, error);
-    return null;
+    // Fallback: Utiliser la clé par défaut connue
+    const fallbackKey = process.env.AIRBNB_API_KEY || 'd306zoyjsyarp7ifhu67rjxn52tv0t20';
+    console.warn(`⚠️  [HARVEST] API Key non extraite, utilisation fallback: ${fallbackKey.substring(0, 20)}...`);
+    return fallbackKey;
   }
 }
 
 /**
- * Insère ou met à jour une conversation dans la DB
+ * Convertit les cookies en string Cookie header
  */
-async function upsertConversation(thread: ThreadData) {
+function cookiesToHeaderString(cookies: any[]): string {
+  return cookies
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
+}
+
+/**
+ * FONCTION PRINCIPALE D'EXTRACTION DES AUTH HEADERS
+ */
+async function getAuthHeaders(page: Page): Promise<AuthHeaders> {
   try {
-    // Vérifier si la conversation existe
+    console.log('🔐 [HARVEST] Début extraction auth headers...');
+
+    // 1. Naviguer vers inbox
+    console.log(`📡 [HARVEST] Navigation vers ${INBOX_URL}...`);
+    await page.goto(INBOX_URL, { 
+      waitUntil: 'domcontentloaded',
+      timeout: 30000 
+    });
+
+    // 2. Attendre que la page charge
+    await page.waitForTimeout(5000);
+
+    // 3. Extraire CSRF token
+    const csrfToken = await extractCsrfToken(page);
+
+    // 4. Extraire API key
+    const apiKey = await extractApiKey(page);
+
+    // 5. Récupérer tous les cookies
+    const cookies = await page.context().cookies();
+    const cookieHeader = cookiesToHeaderString(cookies);
+
+    // 6. Construire headers complets
+    const headers: AuthHeaders = {
+      'x-csrf-token': csrfToken,
+      'x-airbnb-api-key': apiKey,
+      'Cookie': cookieHeader,
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'Origin': 'https://www.airbnb.com',
+      'Referer': INBOX_URL
+    };
+
+    console.log('✅ [HARVEST] Auth headers extraits avec succès');
+    console.log(`   - CSRF Token: ${csrfToken.substring(0, 20)}...`);
+    console.log(`   - API Key: ${apiKey.substring(0, 20)}...`);
+    console.log(`   - Cookies: ${cookies.length} cookies`);
+
+    return headers;
+
+  } catch (error) {
+    console.error('❌ [HARVEST] Erreur extraction headers:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// PHASE 2: POLLING API - BOUCLE INFINIE
+// ============================================================================
+
+/**
+ * Requête GraphQL pour récupérer les threads
+ */
+const MESSAGING_THREAD_LIST_QUERY = `
+  query MessagingThreadListQuery($request: MessagingThreadListRequest!) {
+    messaging {
+      threadList(request: $request) {
+        threads {
+          id
+          lastMessagePreview
+          isUnread
+          guest {
+            firstName
+            lastName
+            id
+          }
+          lastMessageTimestamp
+          listing {
+            id
+            name
+          }
+        }
+        hasMore
+      }
+    }
+  }
+`;
+
+/**
+ * Appel API GraphQL pour récupérer les conversations
+ */
+async function fetchThreadsFromAPI(headers: AuthHeaders): Promise<AirbnbThread[]> {
+  try {
+    console.log('📡 [API] Appel MessagingThreadListQuery...');
+
+    const payload = {
+      query: MESSAGING_THREAD_LIST_QUERY,
+      variables: {
+        request: {
+          offset: 0,
+          limit: 50,
+          filter: "INBOX"
+        }
+      }
+    };
+
+    const response = await axios.post<AirbnbAPIResponse>(API_ENDPOINT, payload, {
+      headers: headers as any,
+      timeout: 15000
+    });
+
+    // Vérifier erreurs GraphQL
+    if (response.data.errors && response.data.errors.length > 0) {
+      console.error('❌ [API] Erreurs GraphQL:', response.data.errors);
+      throw new Error(`GraphQL errors: ${JSON.stringify(response.data.errors)}`);
+    }
+
+    // Extraire threads
+    const threads = response.data?.data?.messaging?.threadList?.threads || [];
+    console.log(`✅ [API] ${threads.length} conversations récupérées`);
+
+    return threads;
+
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      
+      // Détection token expiré
+      if (axiosError.response?.status === 401 || axiosError.response?.status === 403) {
+        console.error('🔑 [API] Token expiré (401/403) - Re-harvest nécessaire');
+        throw new Error('TOKEN_EXPIRED');
+      }
+
+      console.error(`❌ [API] Erreur HTTP ${axiosError.response?.status}:`, axiosError.message);
+      console.error('   Response:', axiosError.response?.data);
+    } else {
+      console.error('❌ [API] Erreur:', error);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Insert/Update conversation dans la DB
+ */
+async function upsertConversation(thread: AirbnbThread): Promise<string> {
+  try {
+    const guestName = `${thread.guest.firstName} ${thread.guest.lastName || ''}`.trim();
+    const listingName = thread.listing?.name || 'Propriété inconnue';
+
+    // Check si existe
     const existing = await db
       .select()
       .from(conversations)
-      .where(eq(conversations.externalId, thread.airbnbThreadId))
+      .where(eq(conversations.externalId, thread.id))
       .limit(1);
 
     if (existing.length > 0) {
-      // Mettre à jour
+      // Update
       await db
         .update(conversations)
         .set({
-          guestName: thread.guestName,
-          lastMessageAt: thread.lastMessageTime,
-          updatedAt: new Date()
+          guestName,
+          lastMessageAt: new Date(thread.lastMessageTimestamp)
         })
-        .where(eq(conversations.externalId, thread.airbnbThreadId));
+        .where(eq(conversations.id, existing[0].id));
+
+      return existing[0].id;
     } else {
-      // Créer (nécessite propertyId - on prend le premier)
-      const firstProperty = await db.execute(sql`SELECT id FROM properties LIMIT 1`);
-      const propertyId = firstProperty.rows[0]?.id;
+      // Insert (besoin propertyId - prendre le premier ou défaut)
+      const allConvs = await db.select().from(conversations).limit(1);
+      const propertyId = allConvs[0]?.propertyId || 'default-property';
 
-      if (!propertyId) {
-        console.error('❌ [SYNC] Aucune propriété trouvée dans la base');
-        return;
+      const result = await db
+        .insert(conversations)
+        .values({
+          propertyId,
+          guestName,
+          externalId: thread.id,
+          source: 'airbnb',
+          lastMessageAt: new Date(thread.lastMessageTimestamp)
+        })
+        .returning();
+
+      console.log(`✅ [DB] Nouvelle conversation créée: ${thread.id}`);
+      return result[0].id;
+    }
+  } catch (error) {
+    console.error(`❌ [DB] Erreur upsert conversation ${thread.id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Traite les threads récupérés
+ */
+async function processThreads(threads: AirbnbThread[]): Promise<void> {
+  try {
+    // Filtrer non lus
+    const unreadThreads = threads.filter(t => t.isUnread);
+    console.log(`📬 [SYNC] ${unreadThreads.length} conversation(s) non lue(s) sur ${threads.length}`);
+
+    // Upsert tous les threads
+    for (const thread of threads) {
+      try {
+        await upsertConversation(thread);
+        
+        if (thread.isUnread) {
+          console.log(`🔔 [SYNC] Nouveau message détecté ! Thread: ${thread.id}, Guest: ${thread.guest.firstName}`);
+        }
+      } catch (error) {
+        console.error(`❌ [SYNC] Erreur traitement thread ${thread.id}:`, error);
+        // Continue avec les autres
       }
-
-      await db.insert(conversations).values({
-        propertyId: propertyId,
-        externalId: thread.airbnbThreadId,
-        source: 'airbnb-cohost',
-        guestName: thread.guestName,
-        status: 'active',
-        lastMessageAt: thread.lastMessageTime,
-        checkIn: null,
-        checkOut: null
-      });
     }
 
-    console.log(`✅ [SYNC] Conversation ${thread.airbnbThreadId} synchronisée`);
+    console.log(`✅ [SYNC] ${threads.length} conversations traitées`);
   } catch (error) {
-    console.error(`❌ [SYNC] Erreur upsert conversation:`, error);
+    console.error('❌ [SYNC] Erreur processThreads:', error);
   }
 }
 
-/**
- * Déclenche l'AI worker immédiatement (pas de polling DB!)
- */
-async function triggerAIWorker(conversationId: number, messageId: number) {
-  try {
-    // Marquer le message comme "à traiter par l'IA"
-    await db.execute(sql`
-      UPDATE messages
-      SET replied_at = NULL
-      WHERE id = ${messageId}
-    `);
-
-    console.log(`🤖 [SYNC] AI worker déclenché pour message ${messageId}`);
-  } catch (error) {
-    console.error('❌ [SYNC] Erreur déclenchement AI:', error);
-  }
-}
+// ============================================================================
+// ORCHESTRATEUR PRINCIPAL
+// ============================================================================
 
 /**
- * Boucle infinie Badge Polling (Architecture Élite)
- * OPTIMISATION: Garde le navigateur OUVERT entre les cycles
+ * Boucle infinie de polling avec re-harvest automatique
  */
-async function runSyncWorkerInfinite() {
-  console.log('🚀 [SYNC] Worker démarré - Mode Badge Polling Élite');
+async function runSyncWorkerInfinite(): Promise<void> {
+  console.log('🚀 [SYNC] Démarrage Sync Worker - Architecture Hybride');
+  console.log(`⏱️  [SYNC] Interval polling: ${POLLING_INTERVAL_SEC}s`);
 
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
   let page: Page | null = null;
+  let authHeaders: AuthHeaders | null = null;
 
   while (true) {
     try {
-      // 1. Lancement navigateur UNIQUEMENT si pas déjà ouvert (optimisation Gemini)
-      if (!browser || !page) {
-        console.log('🔄 [SYNC] Lancement navigateur initial...');
-        const launched = await launchBrowser();
-        browser = launched.browser;
-        context = launched.context;
-        page = launched.page;
+      // PHASE 1: HARVESTING (si pas de headers ou expirés)
+      if (!authHeaders) {
+        console.log('\n🔐 [PHASE 1] HARVESTING - Extraction auth headers...');
 
-        // Navigation initiale vers inbox
-        await page.goto('https://www.airbnb.com/hosting/inbox', { timeout: 30000 });
-      }
-
-      // 2. Détection captcha
-      if (await detectCaptcha(page)) {
-        console.warn('🤖 [SYNC] Captcha détecté, pause 60s');
-        await page.waitForTimeout(60000);
-        continue;
-      }
-
-      // 3. Badge Polling (Méthode Élite - pas GraphQL!)
-      const unreadCount = await checkUnreadBadge(page);
-
-      if (unreadCount === 0) {
-        console.log('✅ [SYNC] Aucun nouveau message');
-        await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_SEC * 1000));
-        continue;
-      }
-
-      // 4. Extraction threads non lus UNIQUEMENT
-      console.log(`📬 [SYNC] Extraction des ${unreadCount} thread(s) non lu(s)...`);
-      const unreadThreads = await extractUnreadThreads(page);
-
-      // 5. Pour chaque thread non lu, extraire le message et déclencher l'IA
-      for (const thread of unreadThreads) {
-        try {
-          // Upsert conversation
-          await upsertConversation(thread);
-
-          // Extraire le message complet
-          const message = await extractMessageContent(page, thread.airbnbThreadId);
-
-          if (message && message.isFromGuest) {
-            // Insérer le message dans la DB
-            const conversationResult = await db
-              .select()
-              .from(conversations)
-              .where(eq(conversations.externalId, thread.airbnbThreadId))
-              .limit(1);
-
-            if (conversationResult.length > 0) {
-              const conversationId = conversationResult[0].id;
-
-              // Insérer le message
-              const insertResult = await db.insert(messages).values({
-                conversationId,
-                content: message.content,
-                isFromGuest: true,
-                timestamp: message.timestamp,
-                repliedAt: null // Marqué comme non répondu
-              }).returning({ id: messages.id });
-
-              const messageId = insertResult[0].id;
-
-              // DÉCLENCHEMENT IMMÉDIAT DE L'IA (pas de polling!)
-              await triggerAIWorker(conversationId, messageId);
-
-              console.log(`✅ [SYNC] Message ${messageId} extrait et IA déclenchée`);
-            }
-          }
-        } catch (error) {
-          console.error(`❌ [SYNC] Erreur traitement thread ${thread.airbnbThreadId}:`, error);
-          continue;
+        // Lancer browser si pas déjà fait
+        if (!browser) {
+          browser = await chromium.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+          });
         }
+
+        if (!context) {
+          context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            viewport: { width: 1920, height: 1080 }
+          });
+
+          // Charger session
+          await loadPlaywrightSession(context);
+        }
+
+        if (!page) {
+          page = await context.newPage();
+        }
+
+        // Extraire headers
+        authHeaders = await getAuthHeaders(page);
+        console.log('✅ [PHASE 1] HARVESTING terminé\n');
       }
 
-      console.log(`✅ [SYNC] Cycle terminé: ${unreadThreads.length} threads traités`);
+      // PHASE 2: POLLING API
+      console.log('📡 [PHASE 2] POLLING API...');
+      
+      const threads = await fetchThreadsFromAPI(authHeaders);
+      await processThreads(threads);
+
+      console.log(`✅ [PHASE 2] Cycle terminé avec succès\n`);
 
     } catch (error: any) {
-      console.error(`❌ [SYNC] Erreur worker:`, error.message);
+      console.error('❌ [SYNC] Erreur dans boucle principale:', error);
 
-      // Si erreur critique, fermer et relancer navigateur
-      if (browser) {
-        await browser.close().catch(() => {});
-        browser = null;
-        page = null;
+      // Si token expiré, réinitialiser pour re-harvest
+      if (error.message === 'TOKEN_EXPIRED') {
+        console.log('🔄 [SYNC] Réinitialisation pour re-harvest des tokens...');
+        authHeaders = null;
+        
+        // Fermer et réinitialiser le browser
+        if (page) {
+          await page.close().catch(() => {});
+          page = null;
+        }
+        if (context) {
+          await context.close().catch(() => {});
+          context = null;
+        }
+        if (browser) {
+          await browser.close().catch(() => {});
+          browser = null;
+        }
+        
+        // Retry immédiatement
+        continue;
       }
-    } finally {
-      // Pause avant prochain cycle (SANS fermer le navigateur!)
-      console.log(`💤 [SYNC] Sleep ${POLLING_INTERVAL_SEC}s avant prochain cycle`);
-      await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_SEC * 1000));
     }
+
+    // Attente avant prochain cycle
+    console.log(`⏳ [SYNC] Attente ${POLLING_INTERVAL_SEC}s avant prochain cycle...\n`);
+    await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_SEC * 1000));
   }
 }
 
-// Lancement du worker
-if (require.main === module) {
-  console.log('🟢 [SYNC] Initialisation Sync Worker...');
-  runSyncWorkerInfinite().catch((error) => {
-    console.error('💥 [SYNC] Crash fatal:', error);
-    process.exit(1);
-  });
-}
+// ============================================================================
+// LANCEMENT
+// ============================================================================
 
-export { runSyncWorkerInfinite };
+runSyncWorkerInfinite().catch(error => {
+  console.error('💥 [SYNC] Crash fatal:', error);
+  process.exit(1);
+});

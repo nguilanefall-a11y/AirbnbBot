@@ -1,0 +1,437 @@
+
+═══════════════════════════════════════════════════════════════
+
+📊 ANALYSE COMPLÈTE DU SCRAPING AIRBNB - Pour Analyse IA
+
+═══════════════════════════════════════════════════════════════
+
+
+
+🎯 OBJECTIF:
+
+Le bot doit extraire les conversations non lues depuis la boîte de réception Airbnb.
+
+
+
+═══════════════════════════════════════════════════════════════
+
+1️⃣ MÉTHODE ACTUELLE DE SCRAPING
+
+═══════════════════════════════════════════════════════════════
+
+
+
+🌐 URL CIBLE:
+
+https://www.airbnb.com/hosting/inbox
+
+
+
+🔄 STRATÉGIE "BROAD & FILTER":
+
+1. Charger la page inbox avec Playwright (headless Chrome)
+
+2. Attendre 10 secondes que les éléments se chargent dynamiquement
+
+3. Chercher TOUS les liens de conversation avec les sélecteurs CSS:
+
+- a[href*="/hosting/messages/"]
+
+- a[href*="/hosting/inbox/folder/"]
+
+
+
+4. Pour chaque lien trouvé:
+
+├─ Extraire l'ID du thread depuis l'URL (regex)
+
+├─ Chercher le nom de l'invité (h3, div.t1joj, span.guest)
+
+├─ Extraire le dernier message preview
+
+└─ Détecter si "non lu" avec 2 méthodes:
+
+├─ Méthode 1: Chercher un badge (div[data-testid*="unread"], span.badge)
+
+└─ Méthode 2: Vérifier si le texte est en gras (font-weight > 400)
+
+
+
+5. MODE TEST activé: Prend les 5 premiers threads peu importe le statut
+
+
+
+═══════════════════════════════════════════════════════════════
+
+2️⃣ CODE TYPESCRIPT EXACT
+
+═══════════════════════════════════════════════════════════════
+
+}
+
+/**
+ * Extrait les threads non lus UNIQUEMENT quand badge > 0
+ */
+async function extractUnreadThreads(page: Page): Promise<ThreadData[]> {
+  try {
+    await page.goto('https://www.airbnb.com/hosting/inbox', { timeout: 30000 });
+    await page.waitForTimeout(3000);
+
+    // Trouver les conversations avec badge unread
+    const threads = await page.$$eval(
+      '[data-testid="inbox-thread"], .thread-item, [class*="conversation"]',
+      (elements) => {
+        return elements
+          .filter((el) => {
+            // Vérifier si cette conversation a un badge non lu
+            const unreadBadge = el.querySelector('[data-testid="unread-badge"], .badge, [class*="unread"]');
+            return !!unreadBadge;
+          })
+          .map((el) => {
+            const threadId = el.getAttribute('data-thread-id') || el.getAttribute('data-id') || '';
+            const guestName = el.querySelector('[data-testid="guest-name"], .guest-name')?.textContent?.trim() || 'Voyageur';
+            const lastMessage = el.querySelector('[data-testid="message-preview"], .message-preview')?.textContent?.trim() || '';
+
+            return {
+              airbnbThreadId: threadId,
+              guestName,
+              lastMessagePreview: lastMessage,
+              lastMessageTime: new Date(),
+              isUnread: true,
+              airbnbUrl: `https://www.airbnb.com/hosting/inbox/folder/all/${threadId}`
+            };
+          });
+      }
+    );
+
+    console.log(`✅ [SYNC] ${threads.length} thread(s) non lu(s) extrait(s)`);
+    return threads;
+  } catch (error) {
+    console.error('❌ [SYNC] Erreur extraction threads:', error);
+    return [];
+  }
+}
+
+/**
+ * Extrait le contenu complet d'un message depuis un thread
+ */
+async function extractMessageContent(page: Page, threadId: string): Promise<MessageData | null> {
+  try {
+    const threadUrl = `https://www.airbnb.com/hosting/inbox/folder/all/${threadId}`;
+    await page.goto(threadUrl, { timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    // Extraire le dernier message de l'invité
+    const messageElement = await page.locator('[data-testid="message-item"], .message').last();
+
+    if (await messageElement.count() === 0) {
+      return null;
+    }
+
+    const content = await messageElement.textContent();
+    const isFromGuest = !(await messageElement.locator('[data-is-host="true"]').count() > 0);
+
+    return {
+      content: content?.trim() || '',
+      isFromGuest,
+      timestamp: new Date()
+    };
+  } catch (error) {
+    console.error(`❌ [SYNC] Erreur extraction message ${threadId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Insère ou met à jour une conversation dans la DB
+ */
+async function upsertConversation(thread: ThreadData) {
+  try {
+    // Vérifier si la conversation existe
+    const existing = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.externalId, thread.airbnbThreadId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      // Mettre à jour
+      await db
+        .update(conversations)
+        .set({
+          guestName: thread.guestName,
+          lastMessageAt: thread.lastMessageTime,
+          updatedAt: new Date()
+        })
+        .where(eq(conversations.externalId, thread.airbnbThreadId));
+    } else {
+      // Créer (nécessite propertyId - on prend le premier)
+      const firstProperty = await db.execute(sql`SELECT id FROM properties LIMIT 1`);
+      const propertyId = firstProperty.rows[0]?.id;
+
+
+
+═══════════════════════════════════════════════════════════════
+
+3️⃣ RÉSULTAT ACTUEL
+
+═══════════════════════════════════════════════════════════════
+
+
+
+❌ PROBLÈME: Le bot trouve 0 conversations
+
+📝 Logs:
+
+⏳ [SYNC] Attente du chargement des conversations...
+
+⚠️ [SYNC] Timeout attente éléments (10s)
+
+🔍 [SYNC] Recherche threads via sélecteurs robustes...
+
+✅ [SYNC] 0 thread(s) extrait(s) (MODE TEST)
+
+
+
+🔍 SÉLECTEURS TESTÉS (TOUS RETOURNENT 0):
+
+- a[href*="/hosting/messages/"] → 0 éléments
+
+- a[href*="/hosting/inbox/folder/"] → 0 éléments
+
+- [data-testid*="message"] → 0 éléments
+
+- [class*="thread"] → 0 éléments
+
+- [class*="conversation"] → 0 éléments
+
+
+
+═══════════════════════════════════════════════════════════════
+
+4️⃣ HTML CAPTURÉ (Premiers 3000 caractères)
+
+═══════════════════════════════════════════════════════════════
+
+
+
+[Fichier debug-inbox-html.txt non trouvé]
+
+
+
+═══════════════════════════════════════════════════════════════
+
+5️⃣ CONTEXTE TECHNIQUE
+
+═══════════════════════════════════════════════════════════════
+
+
+
+🔐 SESSION: Valide (64 cookies, user_id existant)
+
+- _airbed_session_id: b7b5db15e571949f05c9e851db5467db
+
+- csrf_token: 6329616119c8779eb83148e53d8292dd
+
+- Cookies Airbnb: 64 cookies valides (.airbnb.fr, .airbnb.com)
+
+
+
+🌐 NAVIGATION:
+
+- URL cible: https://www.airbnb.com/hosting/inbox
+
+- Titre attendu: "Messages • Airbnb"
+
+- Remarque: Le bot peut être redirigé vers UNE conversation spécifique
+
+
+
+📄 STRUCTURE HTML ATTENDUE:
+
+- data-testid="messaging-inbox-page" devrait être présent
+
+- id="inbox_panel" devrait être présent
+
+- aria-label="Panneau de la liste des conversations" devrait être présent
+
+- PROBLÈME: Aucun <a> avec href contenant "/hosting/messages/"
+
+
+
+═══════════════════════════════════════════════════════════════
+
+6️⃣ HYPOTHÈSES
+
+═══════════════════════════════════════════════════════════════
+
+
+
+❓ Hypothèse 1: Boîte de réception vide
+
+→ Mais redirection vers une conversation spécifique suggère qu'il y en a
+
+
+
+❓ Hypothèse 2: Sélecteurs CSS obsolètes
+
+→ Airbnb a changé sa structure HTML récemment (2024-2025)
+
+
+
+❓ Hypothèse 3: Chargement lazy/dynamique incomplet
+
+→ Les éléments ne sont pas encore dans le DOM après 10s d'attente
+
+→ Peut nécessiter scroll ou interaction utilisateur
+
+
+
+❓ Hypothèse 4: Redirection automatique
+
+→ Airbnb redirige automatiquement vers la dernière conversation
+
+→ Le bot ne voit jamais la liste complète de l'inbox
+
+
+
+❓ Hypothèse 5: Badge Polling Alternative
+
+→ La méthode "Badge Polling" (détection visuelle du badge "non lu")
+
+→ Pourrait être plus stable que le scraping des liens
+
+
+
+═══════════════════════════════════════════════════════════════
+
+7️⃣ QUESTIONS POUR L'IA
+
+═══════════════════════════════════════════════════════════════
+
+
+
+1. Pourquoi le bot est potentiellement redirigé vers /hosting/messages/[ID]
+
+   au lieu de rester sur /hosting/inbox ?
+
+
+
+2. Quels sont les NOUVEAUX sélecteurs CSS corrects pour extraire
+
+   la liste des conversations sur Airbnb en décembre 2025 ?
+
+
+
+3. Y a-t-il une API Airbnb ou un endpoint JSON à scraper à la place ?
+
+   (Par exemple: /api/v3/ViaductInboxData ou similaire)
+
+
+
+4. Faut-il désactiver les redirections automatiques dans Playwright ?
+
+
+
+5. Existe-t-il un bouton/action à cliquer avant d'accéder à la liste ?
+
+   (Par exemple: cliquer sur "Tous les messages" ou un filtre)
+
+
+
+6. La méthode "Badge Polling" (détecter visuellement le badge rouge "non lu")
+
+   est-elle plus stable que scraper les liens de conversation ?
+
+
+
+7. Faut-il simuler un scroll ou une interaction utilisateur pour forcer
+
+   le chargement des conversations dans le DOM ?
+
+
+
+═══════════════════════════════════════════════════════════════
+
+8️⃣ ARCHITECTURE ACTUELLE (Fondations propres)
+
+═══════════════════════════════════════════════════════════════
+
+
+
+✅ WORKERS TypeScript (optimisés Gemini AI):
+
+- sync_worker.ts: Badge Polling (10s) - Scraping conversations
+
+- ai_worker.ts: Gemini réponses (15s) - Génération IA
+
+- send_worker.ts: GraphQL API (5s) - Envoi messages
+
+
+
+✅ BASE DE DONNÉES:
+
+- Neon PostgreSQL (EU Central)
+
+- Tables: conversations, messages, queue_outbox, properties
+
+
+
+✅ GESTION ERREURS:
+
+- Retry automatique avec backoff exponentiel
+
+- Timeouts configurables
+
+- Logs structurés
+
+- Mode dégradé (continue même si scraping fail)
+
+
+
+═══════════════════════════════════════════════════════════════
+
+9️⃣ FICHIERS DE RÉFÉRENCE
+
+═══════════════════════════════════════════════════════════════
+
+
+
+�� workers/sync_worker.ts - Worker principal de scraping
+
+📄 airbnb-session.json - 64 cookies de session valides
+
+📄 .env - Configuration complète (DB, API keys, intervals)
+
+📄 pm2-workers.json - Configuration PM2 pour workers 24/7
+
+
+
+═══════════════════════════════════════════════════════════════
+
+�� DEMANDE FINALE À L'IA
+
+═══════════════════════════════════════════════════════════════
+
+
+
+Analyse ce rapport et propose:
+
+1. Les sélecteurs CSS corrects à jour pour décembre 2025
+
+2. Une stratégie alternative si les sélecteurs ne fonctionnent pas
+
+3. Une méthode pour détecter et gérer les redirections automatiques
+
+4. Un code TypeScript/Playwright mis à jour pour extraire les conversations
+
+5. Des suggestions pour améliorer la stabilité du scraping long terme
+
+
+
+═══════════════════════════════════════════════════════════════
+
+FIN DU RAPPORT
+
+═══════════════════════════════════════════════════════════════
+
