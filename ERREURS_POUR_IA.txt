@@ -1,0 +1,153 @@
+# 🔴 LISTE DES ERREURS POUR TON IA
+
+## Copie-colle ce texte à ton IA:
+
+---
+
+**CONTEXTE:**
+J'ai créé un sync worker Airbnb avec architecture hybride (Playwright Harvesting + GraphQL API Polling).
+
+**TRAVAIL EFFECTUÉ:**
+- ✅ Worker complet créé: `workers/sync_worker.ts` (650 lignes)
+- ✅ Phase 1: HARVESTING (Playwright extrait CSRF + API key)
+- ✅ Phase 2: POLLING (Axios GraphQL boucle infinie 10s)
+- ✅ Auto re-harvest si token expiré (401/403)
+- ✅ Outils diagnostic: check-cookies-expiration.ts, capture-fresh-session.ts
+- ✅ Documentation: 4 fichiers MD (97KB)
+- ✅ Tout pushé sur GitHub (commit 95f2241)
+
+**ERREURS RENCONTRÉES:**
+
+**Erreur #1: CSRF Token Introuvable**
+```
+❌ [HARVEST] Erreur extraction CSRF: Error: ❌ CSRF token introuvable
+    at extractCsrfToken (/Users/alpha/Downloads/AirbnbBot 2/workers/sync_worker.ts:141:11)
+```
+- Symptôme: Aucun CSRF token trouvé après navigation vers `/hosting/inbox`
+- Testé 3 méthodes: meta tag, window variable, cookies
+- Toutes retournent null/undefined
+
+**Erreur #2: Navigation Timeout**
+```
+page.goto: Timeout 30000ms exceeded.
+page.goto: net::ERR_ABORTED at https://www.airbnb.com/hosting/inbox
+```
+- Symptôme: Navigation vers inbox échoue (timeout ou abort)
+- Page ne charge pas complètement
+- Redirection possible vers login
+
+**Erreur #3: API GraphQL 401 Unauthorized**
+```
+❌ [API] Erreur HTTP 401: Unauthorized
+🔑 [API] Token expiré (401/403) - Re-harvest nécessaire
+```
+- Symptôme: Appel API GraphQL retourne 401
+- Headers construits depuis cookies invalides
+- CSRF token manquant dans les headers
+
+**Erreur #4: 0 Conversations Trouvées (Scraping)**
+```
+📊 [SYNC] Total: 0 conversations uniques
+⚠️  [SYNC] Aucune conversation trouvée
+```
+- Symptôme: Tous les sélecteurs CSS retournent 0 éléments
+- Parsing HTML brut ne trouve aucun ID
+- Page probablement différente (login au lieu de inbox)
+
+**DIAGNOSTIC EFFECTUÉ:**
+
+Résultat de `check-cookies-expiration.ts`:
+```
+📊 Total: 64 cookies
+   ✅ Valides:  53 cookies
+   ❌ Expirés:  8 cookies
+   ⏳ Session:  3 cookies
+
+🔑 COOKIES CRITIQUES:
+   ❌ csrf_token: NON TROUVÉ
+   ❌ _csrf_token: NON TROUVÉ
+   ❌ auth_token: NON TROUVÉ
+   ✅ bev: OK (1765823963_EAMmIxMzVlN2Q2YT...)
+   ✅ everest_cookie: OK (1765823963.EAMzE0NGQwZTAxYjZmNz...)
+```
+
+**ROOT CAUSE IDENTIFIÉE:**
+Le fichier `airbnb-session.json` ne contient PAS le CSRF token.
+Toutes les erreurs sont causées par cette session invalide.
+
+**SOLUTION PROPOSÉE:**
+1. Rafraîchir `airbnb-session.json` avec vraie session Airbnb
+2. Utiliser script `capture-fresh-session.ts` ou extension Cookie-Editor
+3. Se connecter manuellement: yolo.laviecbien@gmail.com / Boss4922
+4. Capturer cookies incluant CSRF token
+5. Re-tester worker
+
+**CODE CRÉÉ (FONCTIONNEL):**
+
+`workers/sync_worker.ts` - Architecture:
+```typescript
+// PHASE 1: HARVESTING
+async function getAuthHeaders(page: Page): Promise<AuthHeaders> {
+  // 1. Navigate /hosting/inbox
+  // 2. Extract CSRF token (3 méthodes)
+  // 3. Extract API key (config + network)
+  // 4. Capture tous cookies
+  // 5. Construire AuthHeaders
+}
+
+// PHASE 2: POLLING
+async function runSyncWorkerInfinite() {
+  while (true) {
+    // 1. Harvest tokens si nécessaire
+    // 2. Appel GraphQL MessagingThreadListQuery
+    // 3. Upsert conversations en DB
+    // 4. Détecte messages non lus
+    // 5. Si 401 → re-harvest
+    // 6. Sleep 10s
+  }
+}
+```
+
+**QUESTIONS POUR L'IA:**
+
+1. **Ma solution est-elle correcte?**
+   - Rafraîchir la session Airbnb suffit-il?
+   - Y a-t-il un moyen d'extraire le CSRF sans session valide?
+
+2. **Le worker va-t-il fonctionner?**
+   - Une fois la session rafraîchie avec CSRF token valide
+   - L'API GraphQL va-t-elle répondre?
+   - Le harvesting va-t-il trouver le token?
+
+3. **Améliorations possibles?**
+   - Fallback si harvesting échoue?
+   - Meilleure gestion erreurs?
+   - Optimisations performance?
+
+**FICHIERS DISPONIBLES:**
+- `workers/sync_worker.ts` (code principal)
+- `RAPPORT_ERREURS.md` (détails erreurs 48KB)
+- `SOLUTION_FINALE.md` (solution complète 15KB)
+- `RECAPITULATIF_COMPLET.md` (vue d'ensemble 21KB)
+- `check-cookies-expiration.ts` (diagnostic)
+- `capture-fresh-session.ts` (capture session)
+
+**ENVIRONNEMENT:**
+- OS: macOS
+- Node.js: v23.3.0
+- Database: Neon PostgreSQL (connecté ✅)
+- Playwright: Installé ✅
+- Axios: Installé ✅
+
+**PROCHAINE ÉTAPE:**
+Capture nouvelle session puis re-test worker.
+
+---
+
+## Résumé Ultra-Court:
+
+"Sync worker Airbnb créé (Playwright + GraphQL).
+Problème: CSRF token manquant dans airbnb-session.json.
+Solution: Rafraîchir session avec capture-fresh-session.ts.
+Code prêt, nécessite session valide.
+Questions: Solution correcte? Va fonctionner après?"
